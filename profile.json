@@ -1,0 +1,82 @@
+{
+  "name": "Vishal Bhardwaj",
+  "basedIn": "India",
+  "timezone": "IST (UTC+5:30)",
+  "overlapNotes": "3.5-4.5h with CET, 1.5-3h with UK, little with US Pacific",
+
+  "titles": {
+    "wanted": [
+      "software engineer", "full stack", "full-stack", "fullstack", "frontend", "front end",
+      "backend", "back end", "product engineer", "staff engineer", "senior engineer",
+      "platform engineer", "web engineer", "solutions engineer", "founding engineer",
+      "ai engineer", "applications engineer", "technical lead", "tech lead", "engineering lead"
+    ],
+    "seniorityBonus": ["staff", "principal", "senior", "lead", "architect"],
+    "reject": [
+      "intern", "internship", "junior", "graduate", "apprentice", "trainee",
+      "recruiter", "sales", "account executive", "marketing", "designer", "copywriter",
+      "customer support", "customer success", "data entry", "qa tester", "scrum master",
+      "project manager", "product manager", "engineering manager", "director", "vp ",
+      "ios engineer", "android engineer", "unity", "game developer", "embedded", "firmware",
+      "salesforce", "servicenow", "sap ", "dynamics 365", "wordpress", "shopify developer"
+    ]
+  },
+
+  "skills": {
+    "core": {
+      "typescript": 10, "react": 10, "next.js": 8, "nextjs": 8, "node": 8, "node.js": 8,
+      "python": 9, "aws": 8, "postgres": 7, "postgresql": 7, "fastapi": 5,
+      "javascript": 5, "tailwind": 3, "redux": 3, "rest api": 3, "graphql": 2
+    },
+    "differentiators": {
+      "llm": 9, "ai agent": 10, "agentic": 10, "claude": 8, "openai": 5, "bedrock": 7,
+      "rag": 5, "prompt engineering": 4, "mcp": 4, "copilot": 3, "cursor": 3,
+      "airflow": 7, "databricks": 7, "data pipeline": 5, "elasticsearch": 4, "opensearch": 4,
+      "terraform": 4, "docker": 3, "serverless": 4, "lambda": 4, "cloudflare": 4
+    },
+    "gaps": {
+      "ruby on rails": 8, "rails": 6, "kotlin": 8, "django": 4, "golang": 6, "go developer": 6,
+      "rust": 7, "scala": 7, "php": 8, "laravel": 8, ".net": 8, "c#": 8, "java": 5,
+      "elixir": 7, "redshift": 2, "kubernetes": 3, "swift": 8, "flutter": 7
+    }
+  },
+
+  "eligibility": {
+    "great": ["worldwide", "anywhere", "global", "any country", "fully remote, global", "remote - global", "work from anywhere"],
+    "good": ["india", "asia", "apac", "emea", "europe", "cet", "gmt", "uk ", "united kingdom", "germany", "netherlands", "nordics", "australia"],
+    "bad": ["us only", "u.s. only", "usa only", "united states only", "must be based in the us", "must reside in the united states", "us-based", "authorized to work in the united states", "canada only", "w2", "green card", "tn visa", "security clearance", "onsite", "on-site", "hybrid"]
+  },
+
+  "projects": {
+    "unmarked": {
+      "lead": "Unmarked, a football decision-training app: a rules engine that grades a player's run, generated-and-validated content, and a Three.js pitch. Built solo with Claude Code.",
+      "signals": ["typescript", "react", "next.js", "three.js", "ai", "llm", "0-to-1", "side project", "pwa", "product"]
+    },
+    "qala": {
+      "lead": "The Qala, an online store built end to end for a jewellery brand: storefront, ordering flow, admin and the pipeline that publishes content to the live site.",
+      "signals": ["e-commerce", "ecommerce", "retail", "storefront", "cms", "content", "payments", "marketplace", "shopify", "catalog", "catalogue"]
+    },
+    "jiraAgent": {
+      "lead": "An autonomous Jira planning agent on Claude via Bedrock: a multi-step tool-calling loop, a human approval gate between planning and execution, and guardrails including cost ceilings and full auditing.",
+      "signals": ["llm", "ai agent", "agentic", "automation", "developer tools", "internal tools", "bedrock", "claude", "openai", "platform"]
+    },
+    "pettrak": {
+      "lead": "PetTrak at Kynetec: millions of records from multiple data providers turned into market insights, with Databricks pipelines, Airflow orchestration and React dashboards on top.",
+      "signals": ["data", "pipeline", "etl", "analytics", "warehouse", "airflow", "databricks", "dashboard", "scale", "search"]
+    },
+    "langley": {
+      "lead": "Langley at Asurion: an enterprise platform pulling disparate sources into a search-driven UI on AWS OpenSearch over PostgreSQL.",
+      "signals": ["search", "elasticsearch", "opensearch", "enterprise", "b2b", "aws", "serverless"]
+    }
+  },
+
+  "resumeKeywords": [
+    "react", "redux", "next.js", "javascript", "typescript", "tailwind", "node", "python",
+    "fastapi", "rest api", "postgresql", "databricks", "airflow", "kafka", "elasticsearch",
+    "opensearch", "aws", "s3", "ec2", "lambda", "api gateway", "cloudfront", "terraform",
+    "cloudwatch", "docker", "jenkins", "github actions", "agile", "jira", "git",
+    "claude", "bedrock", "llm", "cloudflare", "three.js"
+  ],
+
+  "thresholds": { "pack": 60, "strong": 75, "worthALook": 55 }
+}

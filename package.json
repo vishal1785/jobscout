@@ -1,0 +1,13 @@
+{
+  "name": "jobscout",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Finds worldwide-remote engineering roles worth applying to, and prepares for them. Never submits anything.",
+  "scripts": {
+    "scout": "node src/index.ts",
+    "scout:open": "node src/index.ts --open",
+    "report": "node src/index.ts --no-fetch"
+  },
+  "engines": { "node": ">=22.6" }
+}
