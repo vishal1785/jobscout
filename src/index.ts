@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 import { fetchAll, type Job, type Watch } from './sources.ts';
 import { scoreAll, type Scored } from './score.ts';
 import { buildPack, slug } from './tailor.ts';
+import { resolveDirectLinks } from './direct.ts';
 import { buildReport } from './report.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,6 +49,44 @@ async function main() {
   }
 
   const scored: Scored[] = scoreAll(jobs, profile);
+
+  // find each promising company's own posting, so you can apply direct
+  if (!args.has('--no-fetch')) {
+    log('Looking up company boards...');
+    const { resolved, discovered } = await resolveDirectLinks(
+      scored, p('data', 'boards.json'),
+      { minScore: profile.thresholds.worthALook, maxProbes: 40 },
+      log,
+    );
+    log(`  direct links: ${resolved}`);
+
+    // a company with its own board is worth fetching natively from now on
+    if (discovered.length) {
+      const known = new Set(watchlist.map((w) => `${w.ats}:${w.token}`));
+      let added = 0;
+      for (const b of discovered) {
+        if (known.has(`${b.ats}:${b.token}`)) continue;
+        watchlist.push({ ats: b.ats, token: b.token, label: b.token });
+        known.add(`${b.ats}:${b.token}`);
+        added++;
+      }
+      if (added) {
+        writeFileSync(p('watchlist.json'), JSON.stringify(watchlist, null, 2), 'utf8');
+        log(`  watchlist grew by ${added} board${added === 1 ? '' : 's'}`);
+      }
+    }
+  }
+
+  // carry the direct links back onto the stored jobs, so a --no-fetch rebuild
+  // still shows "Apply direct" instead of silently losing them
+  const direct = new Map(scored.filter((s) => s.directUrl).map((s) => [s.id, s.directUrl!]));
+  for (const j of jobs) {
+    const d = direct.get(j.id) ?? j.directUrl;
+    if (d) { j.directUrl = d; }
+  }
+  for (const s of scored) {
+    if (!s.directUrl) s.directUrl = direct.get(s.id) ?? jobs.find((j) => j.id === s.id)?.directUrl;
+  }
 
   // prep packs for anything above the threshold, newest first, without rewriting existing ones
   mkdirSync(p('drafts'), { recursive: true });

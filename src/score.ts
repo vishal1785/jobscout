@@ -11,6 +11,7 @@ export type Eligibility = 'worldwide' | 'friendly' | 'unclear' | 'restricted';
 
 export type Scored = Job & {
   score: number;
+  directUrl?: string;
   eligibility: Eligibility;
   eligibilityWhy: string;
   matched: string[];
@@ -36,7 +37,20 @@ export function judgeEligibility(job: Job, profile: any): { eligibility: Eligibi
   const locBlocks = profile.eligibility.bad.filter((p: string) => has(loc, p));
   if (locBlocks.length) return { eligibility: 'restricted', why: `location says "${locBlocks[0]}"` };
 
-  for (const phrase of profile.eligibility.great) {
+  // "<somewhere> Only" in the title or location, where somewhere is not his part
+  // of the world: "Senior Engineer - Mexico Only" is not a job he can take
+  const elsewhere = (profile.eligibility.notMine ?? []).find((r: string) => has(loc, r));
+  if (elsewhere) return { eligibility: 'restricted', why: `hiring in ${elsewhere}` };
+  if (/\bonly\b/.test(loc)) return { eligibility: 'restricted', why: `location says "only": ${job.location}` };
+  // "Remote - US", "Remote - NYC": a bare country or city scope in the location
+  // field is a restriction, whatever the description claims about being global
+  if (/\b(us|usa|u\.s\.?|nyc|new york|sf|bay area)\b/.test(loc)) {
+    return { eligibility: 'restricted', why: `location is country-scoped: ${job.location}` };
+  }
+
+  // a bare "global" or "anywhere" in a description usually describes the company,
+  // not where it hires: only unambiguous phrases count here
+  for (const phrase of profile.eligibility.greatInText ?? []) {
     if (has(text, phrase)) return { eligibility: 'worldwide', why: `description says "${phrase}"` };
   }
   for (const phrase of profile.eligibility.good) {

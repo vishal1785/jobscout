@@ -38,7 +38,8 @@ export function buildPack(job: Scored, profile: any): string {
 
   return `# ${job.company} - ${job.title}
 
-- **Link:** ${job.url}
+- **Link:** ${job.url}${job.directUrl ? `
+- **Apply direct:** ${job.directUrl}` : ''}
 - **Source:** ${job.source}
 - **Location:** ${job.location}
 - **Eligibility:** ${job.eligibility} (${job.eligibilityWhy})

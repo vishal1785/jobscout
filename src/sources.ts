@@ -15,6 +15,7 @@ export type Job = {
   description: string;   // plain text, lowercased later for matching
   tags: string[];
   salary?: string;
+  directUrl?: string;    // the company's own posting, when we can find it
 };
 
 const UA = 'jobscout/1.0 (personal job search; contact vishal1785@gmail.com)';
@@ -55,6 +56,7 @@ async function remoteok(): Promise<Job[]> {
       title: r.position,
       location: r.location || 'Remote',
       url: r.url || `https://remoteok.com/remote-jobs/${r.id}`,
+      directUrl: typeof r.apply_url === 'string' && !/remoteok\./i.test(r.apply_url) ? r.apply_url : undefined,
       postedAt: r.date ?? new Date().toISOString(),
       description: stripHtml(r.description ?? ''),
       tags: Array.isArray(r.tags) ? r.tags : [],
@@ -99,6 +101,7 @@ async function himalayas(): Promise<Job[]> {
     title: j.title,
     location: (j.locationRestrictions ?? []).join(', ') || 'Worldwide',
     url: j.applicationLink ?? j.url ?? '',
+    directUrl: typeof j.applicationLink === 'string' && !/himalayas\.app/i.test(j.applicationLink) ? j.applicationLink : undefined,
     postedAt: j.pubDate ? new Date(j.pubDate * 1000).toISOString() : new Date().toISOString(),
     description: stripHtml(j.description ?? j.excerpt ?? ''),
     tags: j.categories ?? [],
@@ -198,6 +201,7 @@ async function lever(w: Watch): Promise<Job[]> {
 }
 
 /* ------------------------------------------------------------------ runner */
+const BOARD_CAP = 150;
 export async function fetchAll(watchlist: Watch[], log = console.log): Promise<Job[]> {
   const tasks: Array<[string, () => Promise<Job[]>]> = [
     ['RemoteOK', remoteok],
@@ -206,7 +210,14 @@ export async function fetchAll(watchlist: Watch[], log = console.log): Promise<J
     ['WeWorkRemotely', weworkremotely],
     ...watchlist.map((w): [string, () => Promise<Job[]>] => [
       `${w.ats}:${w.label ?? w.token}`,
-      () => (w.ats === 'ashby' ? ashby(w) : w.ats === 'greenhouse' ? greenhouse(w) : lever(w)),
+      async () => {
+        const rows = await (w.ats === 'ashby' ? ashby(w) : w.ats === 'greenhouse' ? greenhouse(w) : lever(w));
+        // staffing agencies post hundreds of roles at once (Bluelight: 917) and
+        // would drown everything else: keep the newest slice of any huge board
+        return rows
+          .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime())
+          .slice(0, BOARD_CAP);
+      },
     ]),
   ];
 

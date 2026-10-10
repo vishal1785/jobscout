@@ -34,17 +34,22 @@ function card(j: Scored, isNew: boolean, packed: boolean): string {
     ${j.gaps.length ? `<p class="gaps">gaps: ${j.gaps.slice(0, 6).map(esc).join(', ')}</p>` : ''}
     <p class="why">${esc(j.eligibilityWhy)}</p>
     <p class="actions">
-      <a class="btn" href="${esc(j.url)}" target="_blank" rel="noopener">Open posting</a>
+      <a class="btn" href="${esc(j.directUrl ?? j.url)}" target="_blank" rel="noopener">${j.directUrl ? 'Apply direct' : 'Open posting'}</a>
+      ${j.directUrl ? `<a class="btn ghost" href="${esc(j.url)}" target="_blank" rel="noopener">Listing</a>` : ''}
       ${packed ? `<a class="btn ghost" href="../drafts/${esc(slug(j))}.md">Prep pack</a>` : ''}
     </p>
   </article>`;
 }
 
+const byNewest = (a: Scored, b: Scored) =>
+  new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+
 export function buildReport(jobs: Scored[], newIds: Set<string>, profile: any, stats: any): string {
-  const strong = jobs.filter((j) => j.score >= profile.thresholds.strong);
-  const worth = jobs.filter((j) => j.score >= profile.thresholds.worthALook && j.score < profile.thresholds.strong);
+  const strong = jobs.filter((j) => j.score >= profile.thresholds.strong).sort(byNewest);
+  const worth = jobs.filter((j) => j.score >= profile.thresholds.worthALook && j.score < profile.thresholds.strong).sort(byNewest);
   const restricted = jobs
     .filter((j) => j.eligibility === 'restricted' && j.score > 12)
+    .sort(byNewest)
     .slice(0, 15);
 
   const section = (title: string, note: string, list: Scored[]) => `
@@ -103,7 +108,7 @@ export function buildReport(jobs: Scored[], newIds: Set<string>, profile: any, s
 </header>
 <main>
   ${section('Strong matches', 'Worth an application today. Check the role is still open before writing anything.', strong)}
-  ${section('Worth a look', 'Decent overlap, or a gap you can answer honestly. Skim before committing an evening.', worth)}
+  ${section('Worth a look', 'Decent overlap, or a gap you can answer honestly. Newest first, like every list here.', worth)}
   ${section('Good role, wrong geography', 'Scored down because the posting reads as country-restricted. Occasionally worth an email asking whether they hire from India.', restricted)}
 </main>
 <footer>
