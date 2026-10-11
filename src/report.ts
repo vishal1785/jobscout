@@ -8,6 +8,10 @@ import { slug } from './tailor.ts';
 const esc = (s: string) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// escaping the text is not enough for an href: a posting that arrived with a
+// javascript: or data: URL would still run when clicked. Only http(s) is a link.
+const safeUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? esc(u) : '');
+
 const ELIG_LABEL: Record<string, string> = {
   worldwide: 'Worldwide',
   friendly: 'Region OK',
@@ -34,8 +38,8 @@ function card(j: Scored, isNew: boolean, packed: boolean): string {
     ${j.gaps.length ? `<p class="gaps">gaps: ${j.gaps.slice(0, 6).map(esc).join(', ')}</p>` : ''}
     <p class="why">${esc(j.eligibilityWhy)}</p>
     <p class="actions">
-      <a class="btn" href="${esc(j.directUrl ?? j.url)}" target="_blank" rel="noopener">${j.directUrl ? 'Apply direct' : 'Open posting'}</a>
-      ${j.directUrl ? `<a class="btn ghost" href="${esc(j.url)}" target="_blank" rel="noopener">Listing</a>` : ''}
+      <a class="btn" href="${safeUrl(j.directUrl ?? j.url)}" target="_blank" rel="noopener">${j.directUrl ? 'Apply direct' : 'Open posting'}</a>
+      ${j.directUrl ? `<a class="btn ghost" href="${safeUrl(j.url)}" target="_blank" rel="noopener">Listing</a>` : ''}
       ${packed ? `<a class="btn ghost" href="../drafts/${esc(slug(j))}.md">Prep pack</a>` : ''}
     </p>
   </article>`;

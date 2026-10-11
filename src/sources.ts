@@ -330,10 +330,16 @@ export async function fetchAll(watchlist: Watch[], log = console.log): Promise<J
     await new Promise((r) => setTimeout(r, 400)); // be a polite client
   }
 
+  // links come from third parties, one of them scraped: anything that is not a
+  // plain http(s) URL is dropped here rather than relied on being escaped later
+  const http = (u?: string) => !!u && /^https?:\/\//i.test(u);
+  const linked = all.filter((j) => http(j.url));
+  for (const j of linked) if (!http(j.directUrl)) j.directUrl = undefined;
+
   // de-duplicate on company + title, keeping the direct company board over an aggregator
   const rank = (j: Job) => (/^(Ashby|Greenhouse|Lever)\//.test(j.source) ? 0 : 1);
   const byKey = new Map<string, Job>();
-  for (const j of all.sort((a, b) => rank(a) - rank(b))) {
+  for (const j of linked.sort((a, b) => rank(a) - rank(b))) {
     const key = `${j.company.toLowerCase().trim()}|${j.title.toLowerCase().trim()}`;
     if (!byKey.has(key)) byKey.set(key, j);
   }
