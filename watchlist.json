@@ -43,5 +43,25 @@
     "ats": "greenhouse",
     "token": "stripe",
     "label": "stripe"
+  },
+  {
+    "ats": "greenhouse",
+    "token": "vercel",
+    "label": "vercel"
+  },
+  {
+    "ats": "ashby",
+    "token": "orbit",
+    "label": "orbit"
+  },
+  {
+    "ats": "greenhouse",
+    "token": "dataiku",
+    "label": "dataiku"
+  },
+  {
+    "ats": "greenhouse",
+    "token": "akersystems",
+    "label": "akersystems"
   }
 ]

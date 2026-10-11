@@ -19,9 +19,11 @@ built in. The report lands in `out/report.html`, prep packs in `drafts/`.
 
 ## What it does
 
-1. **Collects** from RemoteOK, Remotive, Himalayas and We Work Remotely, plus any company
-   boards listed in `watchlist.json` (Ashby, Greenhouse and Lever are supported). All public
-   endpoints, no logins, no bot-evasion. A dead source is logged and skipped.
+1. **Collects** from RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads
+   and Real Work From Anywhere, plus any company boards listed in `watchlist.json` (Ashby,
+   Greenhouse and Lever are supported). All public endpoints, no logins, no bot-evasion. A
+   dead source is logged and skipped. Boards over 150 postings are capped at the newest 150,
+   so one staffing agency cannot drown the rest.
 2. **De-duplicates** on company plus title, preferring the company's own board over an
    aggregator, because applying direct beats applying through a middleman.
 3. **Judges eligibility**, the thing that matters most from India. Most "remote" jobs are
@@ -64,3 +66,21 @@ example `https://jobs.ashbyhq.com/**ready**/...` or `https://boards.greenhouse.i
 - **Scoring is keyword-based.** It cannot tell a thoughtful team from a body shop. Treat the
   ranking as a reading order, not a verdict.
 - **Sources change.** If one starts returning nothing, the run logs `FAILED` and carries on.
+
+## The WhatsApp digest
+
+The report only helps if you read it, so each run sends the top five new matches to your own
+WhatsApp. Nothing is sent when nothing new crossed the threshold.
+
+Setup, free and without a business account:
+
+1. Save **+34 644 51 95 23** as a contact and send it exactly:
+   `I allow callmebot to send me messages`
+2. It replies with an API key.
+3. `cp secrets.example.json secrets.json` and put your number and that key in it.
+   `secrets.json` is gitignored and never leaves the machine.
+
+Then `node src/index.ts` ends with `WhatsApp sent to +91...`. Twilio is supported too if you
+ever want delivery receipts: set `transport: "twilio"` with `accountSid`, `authToken` and
+`from` in the same file. With neither configured the digest is written to `out/digest.txt`
+and a one-click `wa.me` link is printed. `--no-msg` skips it.

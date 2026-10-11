@@ -4,6 +4,7 @@
  *   node src/index.ts            fetch, score, write report + packs
  *   node src/index.ts --no-fetch rebuild report from the stored jobs
  *   node src/index.ts --open     also open the report in your browser
+ *   node src/index.ts --no-msg   skip the WhatsApp digest
  *
  * Nothing is ever submitted. The tool finds and prepares; you apply.
  */
@@ -16,6 +17,7 @@ import { scoreAll, type Scored } from './score.ts';
 import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks } from './direct.ts';
 import { buildReport } from './report.ts';
+import { buildDigest, notify, type WhatsAppConfig } from './notify.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const p = (...parts: string[]) => join(root, ...parts);
@@ -125,6 +127,22 @@ async function main() {
   log(`New since last : ${newIds.size}`);
   log(`Prep packs     : ${packs} written to drafts/`);
   log(`Report         : ${reportPath}`);
+
+  // the digest is only worth sending when something changed, otherwise a daily
+  // task turns into a daily notification you learn to ignore
+  if (!args.has('--no-msg')) {
+    const secrets = readJson(p('secrets.json'), {});
+    const cfg: WhatsAppConfig = {
+      ...(secrets.whatsapp ?? {}),
+      phone: process.env.JOBSCOUT_WA_PHONE ?? secrets.whatsapp?.phone,
+      apikey: process.env.JOBSCOUT_WA_APIKEY ?? secrets.whatsapp?.apikey,
+    };
+    const fresh = scored.filter((s) => newIds.has(s.id) && s.score >= profile.thresholds.worthALook);
+    const digest = buildDigest(fresh.length ? fresh : [], newIds, profile, cfg.maxJobs ?? 5);
+    log('WhatsApp       :');
+    await notify(digest, cfg, p('out', 'digest.txt'), log);
+  }
+
   log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 
   if (args.has('--open')) spawn('cmd', ['/c', 'start', '', reportPath], { detached: true, stdio: 'ignore' }).unref();

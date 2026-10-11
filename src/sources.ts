@@ -152,6 +152,100 @@ async function weworkremotely(): Promise<Job[]> {
  * Add companies to watch in watchlist.json. These are the boards that carry the
  * roles aggregators often miss, and applying direct beats applying via a board.
  */
+/* ----------------------------------------------------------------- Jobicy */
+async function jobicy(): Promise<Job[]> {
+  const out: Job[] = [];
+  // their geo=anywhere feed holds only a handful of roles, so pull the whole
+  // dev industry and let the eligibility scoring sort out the geography
+  let cursor = '';
+  for (let page = 0; page < 4; page++) {
+    const url = `https://jobicy.com/api/v2/remote-jobs?count=50&industry=dev${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+    const res = await getJson(url);
+    for (const r of res.jobs ?? []) {
+      out.push({
+        id: `jobicy:${r.id}`,
+        source: 'Jobicy',
+        company: r.companyName ?? 'Unknown',
+        title: r.jobTitle ?? '',
+        location: r.jobGeo || 'Anywhere',
+        url: r.url,
+        postedAt: r.pubDate ?? new Date().toISOString(),
+        description: stripHtml(r.jobDescription || r.jobExcerpt || ''),
+        tags: [...(r.jobIndustry ?? []), ...(r.jobType ?? []), r.jobLevel].filter(Boolean),
+      });
+    }
+    if (!res.hasMore || !res.nextCursor) break;
+    cursor = res.nextCursor;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return out.filter((j) => j.title);
+}
+
+/* ---------------------------------------------------------- WorkingNomads */
+async function workingnomads(): Promise<Job[]> {
+  const rows = await getJson('https://www.workingnomads.com/api/exposed_jobs/');
+  return (rows ?? [])
+    .filter((r: any) => r?.title && r?.url)
+    .map((r: any) => ({
+      id: `workingnomads:${r.url.replace(/\D+/g, '') || r.title}`,
+      source: 'WorkingNomads',
+      company: r.company_name ?? 'Unknown',
+      title: r.title,
+      // their location field often carries the real restriction ("Time zone: CET")
+      location: r.location || 'Remote',
+      url: r.url,
+      postedAt: r.pub_date ?? new Date().toISOString(),
+      description: stripHtml(r.description ?? ''),
+      tags: String(r.tags ?? '').split(',').map((t: string) => t.trim()).filter(Boolean)
+        .concat(r.category_name ? [r.category_name] : []),
+    }));
+}
+
+/* ------------------------------------------------- RealWorkFromAnywhere */
+// No API: the home page is server-rendered and lists the newest ~75 roles,
+// every one of them genuinely open worldwide, which is exactly his filter.
+// The sitemap carries the posting dates, so the two are read together.
+async function realworkfromanywhere(): Promise<Job[]> {
+  const host = 'https://www.realworkfromanywhere.com';
+  const [html, sitemap] = await Promise.all([getText(host + '/'), getText(host + '/sitemap.xml').catch(() => '')]);
+
+  const dates = new Map<string, string>();
+  for (const m of sitemap.matchAll(/<loc>[^<]*\/jobs\/([^<]+)<\/loc>\s*<lastmod>([^<]+)<\/lastmod>/g)) {
+    dates.set(m[1], m[2]);
+  }
+
+  const out: Job[] = [];
+  for (const card of html.matchAll(/<li><a href="\/jobs\/([^"]+)"[\s\S]*?<\/a><\/li>/g)) {
+    const [block, slug] = [card[0], card[1]];
+    const title = decode(block.match(/<h3[^>]*>([^<]+)<\/h3>/)?.[1]);
+    const company = decode(block.match(/<p class="text-base truncate[^"]*"[^>]*>([^<]+)<\/p>/)?.[1])
+      || decode(block.match(/alt="([^"]+?) logo"/)?.[1]);
+    if (!title || !company) continue;
+    const location = block.match(/<span class="truncate"><span>([^<]+)<\/span>/)?.[1]?.trim() || 'Anywhere in the World';
+    const tags = [...block.matchAll(/<span class="badge[^"]*">\s*([^<]+?)\s*<\/span>/g)].map((t) => t[1]);
+    const ago = block.match(/>(\d+) (day|days|hour|hours|month|months) ago</);
+    out.push({
+      id: `rwfa:${slug}`,
+      source: 'RealWorkFromAnywhere',
+      company,
+      title,
+      location,
+      url: `${host}/jobs/${slug}`,
+      postedAt: dates.get(slug) ?? agoToIso(ago?.[1], ago?.[2]),
+      description: '',           // card view only; the title and tags carry the signal
+      tags,
+    });
+  }
+  return out;
+}
+
+const decode = (s?: string) => stripHtml(s ?? "");
+
+function agoToIso(n?: string, unit?: string): string {
+  const days = !n ? 0 : Number(n) * (unit?.startsWith('hour') ? 1 / 24 : unit?.startsWith('month') ? 30 : 1);
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
 export type Watch = { ats: 'ashby' | 'greenhouse' | 'lever'; token: string; label?: string };
 
 async function ashby(w: Watch): Promise<Job[]> {
@@ -208,6 +302,9 @@ export async function fetchAll(watchlist: Watch[], log = console.log): Promise<J
     ['Remotive', remotive],
     ['Himalayas', himalayas],
     ['WeWorkRemotely', weworkremotely],
+    ['Jobicy', jobicy],
+    ['WorkingNomads', workingnomads],
+    ['RealWorkFromAnywhere', realworkfromanywhere],
     ...watchlist.map((w): [string, () => Promise<Job[]>] => [
       `${w.ats}:${w.label ?? w.token}`,
       async () => {
