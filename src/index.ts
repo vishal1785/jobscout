@@ -5,6 +5,7 @@
  *   node src/index.ts --no-fetch rebuild report from the stored jobs
  *   node src/index.ts --open     also open the report in your browser
  *   node src/index.ts --no-msg   skip the WhatsApp digest
+ *   node src/index.ts --publish  also push this report to the hosted page
  *
  * With a KV configured (in CI) the state, report and digest go to Redis instead
  * of the local data/, out/ and drafts/ folders. See the README.
@@ -21,7 +22,7 @@ import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks } from './direct.ts';
 import { buildReport } from './report.ts';
 import { buildDigest, notify, type WhatsAppConfig } from './notify.ts';
-import { kvConfigured, load, save, KEYS } from './store.ts';
+import { kvConfigured, kvReady, configureKv, load, save, KEYS } from './store.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const p = (...parts: string[]) => join(root, ...parts);
@@ -42,6 +43,8 @@ const detail = (...m: any[]) => { if (!quiet) console.log(...m); };
 async function main() {
   const started = Date.now();
   const profile = readJson(p('profile.json'));
+  const secrets = readJson(p('secrets.json'), {});
+  configureKv(secrets.kv?.url, secrets.kv?.token);
   // watchlist.json in the repo is a seed only. The boards discovered by running
   // it are a record of where someone is looking, so they are kept outside the
   // repo - in the KV in CI, in data/ on the laptop - and merged in here.
@@ -56,10 +59,10 @@ async function main() {
   }
   const storePath = p('data', 'jobs.json');
   const store: { seen: Record<string, string>; jobs: Job[] } =
-    kvConfigured
+    kvConfigured()
       ? { ...(await load(KEYS.state, storePath, { seen: {} as Record<string, string> })), jobs: [] }
       : readJson(storePath, { seen: {}, jobs: [] });
-  if (kvConfigured) log('State: Redis (KV)');
+  if (kvConfigured()) log('State: Redis (KV)');
 
   let jobs: Job[] = store.jobs;
   if (!args.has('--no-fetch')) {
@@ -123,7 +126,7 @@ async function main() {
   // prep packs for anything above the threshold
   const packText = new Map<string, string>();
   let packs = 0;
-  if (kvConfigured) {
+  if (kvConfigured()) {
     // no disk in CI: the pack rides along inside the report, which is nicer on a
     // phone anyway - the preparation is on the same screen as the job
     for (const j of scored.filter((s) => s.score >= profile.thresholds.pack)) {
@@ -135,23 +138,27 @@ async function main() {
     const existing = new Set(readdirSync(p('drafts')));
     for (const j of scored.filter((s) => s.score >= profile.thresholds.pack)) {
       const file = `${slug(j)}.md`;
-      if (existing.has(file)) continue;        // never overwrite: you may have edited it
-      writeFileSync(p('drafts', file), buildPack(j, profile), 'utf8');
-      packs++;
+      if (!existing.has(file)) {               // never overwrite: you may have edited it
+        writeFileSync(p('drafts', file), buildPack(j, profile), 'utf8');
+        packs++;
+      }
+      // a published report carries the pack inside it, the same as in CI, and
+      // it is read back from disk so any edit of yours is what gets published
+      if (args.has('--publish')) packText.set(j.id, readFileSync(p('drafts', file), 'utf8'));
     }
   }
 
   const stats = { fetched: jobs.length, newCount: newIds.size, packs };
   const reportPath = p('out', 'report.html');
   const html = buildReport(scored, newIds, profile, stats, packText);
-  await save(KEYS.report, reportPath, html);
+  await save(KEYS.report, reportPath, html, args.has('--publish'));
 
   // keep the store small: drop anything not seen in this run and older than 60 days
   const cutoff = Date.now() - 60 * 86_400_000;
   for (const [id, firstSeen] of Object.entries(store.seen)) {
     if (new Date(firstSeen).getTime() < cutoff && !jobs.some((j) => j.id === id)) delete store.seen[id];
   }
-  if (kvConfigured) {
+  if (kvConfigured()) {
     await save(KEYS.state, storePath, JSON.stringify({ seen: store.seen }));
     await save(KEYS.ranAt, p('data', 'ran-at.txt'), new Date().toISOString());
   } else {
@@ -172,12 +179,11 @@ async function main() {
   log(`New since last : ${newIds.size}`);
   log(`Prep packs     : ${packs} written to drafts/`);
   if (!quiet) log(`Report         : ${reportPath}`);
-  else log(`Report         : ${kvConfigured ? 'stored in the KV' : 'no KV configured - nothing stored'}`);
+  else log(`Report         : ${kvConfigured() ? 'stored in the KV' : 'no KV configured - nothing stored'}`);
 
   // the digest is only worth sending when something changed, otherwise a daily
   // task turns into a daily notification you learn to ignore
   if (!args.has('--no-msg')) {
-    const secrets = readJson(p('secrets.json'), {});
     const cfg: WhatsAppConfig = {
       ...(secrets.whatsapp ?? {}),
       phone: process.env.JOBSCOUT_WA_PHONE ?? secrets.whatsapp?.phone,

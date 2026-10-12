@@ -5,7 +5,7 @@
  * a short digest to your own WhatsApp. Two transports, both optional:
  *
  *   callmebot  free, no business account. Message "I allow callmebot to send me
- *              messages" to +34 644 51 95 23 on WhatsApp, and it replies with an
+ *              messages" to +34 644 94 58 67 on WhatsApp, and it replies with an
  *              API key. Only sends to your own number, which is all this needs.
  *   twilio     for when you want delivery receipts or a second recipient.
  *

@@ -12,10 +12,22 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? '';
-const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
+let url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? '';
+let token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
-export const kvConfigured = Boolean(url && token);
+/** Lets secrets.json supply the credentials, so the laptop needs no env vars. */
+export function configureKv(u?: string, t?: string): void {
+  if (u && t) { url = u; token = t; }
+}
+
+export const kvReady = () => Boolean(url && token);
+
+/**
+ * Whether this run keeps its state in the KV instead of local files. In CI there
+ * is no disk worth writing to; on the laptop the files stay authoritative even
+ * when credentials exist, so a local run cannot quietly diverge from them.
+ */
+export const kvConfigured = () => kvReady() && Boolean(process.env.CI);
 
 async function kv(path: string, body?: string): Promise<any> {
   const res = await fetch(`${url}/${path}`, {
@@ -37,7 +49,7 @@ export const KEYS = {
 
 /** Read JSON, from the KV when configured, else from the file. */
 export async function load<T>(key: string, file: string, fallback: T): Promise<T> {
-  if (kvConfigured) {
+  if (kvConfigured()) {
     try {
       const { result } = await kv(`get/${encodeURIComponent(key)}`);
       if (result) return JSON.parse(result) as T;
@@ -51,11 +63,14 @@ export async function load<T>(key: string, file: string, fallback: T): Promise<T
 }
 
 /** Write a value both places that make sense: KV in CI, file on the laptop. */
-export async function save(key: string, file: string, value: string): Promise<void> {
-  if (kvConfigured) {
+export async function save(key: string, file: string, value: string, alsoKv = false): Promise<void> {
+  if (kvConfigured()) {
     await kv(`set/${encodeURIComponent(key)}`, value);
     return;
   }
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, value, 'utf8');
+  // --publish: a laptop run can push its report to the hosted page as well,
+  // which is how you see it online before the first scheduled run
+  if (alsoKv && kvReady()) await kv(`set/${encodeURIComponent(key)}`, value);
 }

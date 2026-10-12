@@ -74,9 +74,11 @@ WhatsApp. Nothing is sent when nothing new crossed the threshold.
 
 Setup, free and without a business account:
 
-1. Save **+34 644 51 95 23** as a contact and send it exactly:
+1. Save **+34 644 94 58 67** as a contact and send it exactly:
    `I allow callmebot to send me messages`
-2. It replies with an API key.
+2. It replies with an API key, usually within a minute. If nothing comes back,
+   the docs say to wait 24 hours before retrying - the bot rate-limits repeat
+   requests from the same number rather than answering them.
 3. `cp secrets.example.json secrets.json` and put your number and that key in it.
    `secrets.json` is gitignored and never leaves the machine.
 
@@ -137,3 +139,25 @@ counts only when `CI` is set - never a company, a score, a link or the digest.
 The API key, the phone number and the keyed report URL are redacted from every
 log line, including an error echoed back by CallMeBot. Run locally and you get
 the full detail as before; `--quiet` forces the CI behaviour on the laptop.
+
+### Seeing the report before the first scheduled run
+
+`--publish` pushes a laptop run straight to the hosted page, so you do not have
+to wait for 08:00 or trigger the workflow:
+
+```
+node src/index.ts --publish
+```
+
+It needs the KV credentials, either as `KV_REST_API_URL` / `KV_REST_API_TOKEN`
+in the environment or in `secrets.json`:
+
+```json
+{
+  "kv": { "url": "https://xxx.upstash.io", "token": "AX...." },
+  "whatsapp": { "phone": "+91...", "apikey": "123456" }
+}
+```
+
+The published report carries each prep pack inline, read back from `drafts/`,
+so anything you have edited there is what shows up online.
