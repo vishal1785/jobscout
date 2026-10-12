@@ -45,6 +45,27 @@ const oneLine = (s: string, max = 90) =>
     .trim()
     .slice(0, max);
 
+/**
+ * The only links in a digest should be the ones this tool put there: the job
+ * posting and the report. Chat apps linkify a URL anywhere in a message, so a
+ * title carrying one renders as a tappable link beside a real job - and some
+ * of this text is scraped from a page rather than read from an API. Links in
+ * third-party fields are therefore removed, not merely kept on one line.
+ */
+// extensions that look like a domain but are how engineers write a stack:
+// Node.js/React and ASP.NET must survive a job title untouched
+const NOT_A_TLD = 'js|ts|jsx|tsx|mjs|py|rb|go|php|net|sql|md|css|html|json|yml|sh';
+const safeField = (s: string, max = 90) =>
+  oneLine(s, max * 2)
+    .replace(/(https?:\/\/|www\.)\S+/gi, '[link]')
+    // any domain followed by a path - which is every shortener, bit.ly/x included
+    .replace(new RegExp(`\\b[a-z0-9-]+\\.(?!(?:${NOT_A_TLD})\\b)[a-z]{2,24}/\\S*`, 'gi'), '[link]')
+    // * and _ are emphasis on WhatsApp and Telegram, and the header is the one
+    // bold line in the message: a title must not be able to impersonate it
+    .replace(/[*_~`]/g, '')
+    .trim()
+    .slice(0, max);
+
 /** Strips the WhatsApp emphasis marks for transports that do not render them. */
 export const plain = (text: string) => text.replace(/\*(.+?)\*/g, '$1');
 
@@ -68,8 +89,8 @@ export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, m
 
   for (const j of pick) {
     const age = Math.round((Date.now() - +new Date(j.postedAt)) / 86_400_000);
-    lines.push(`*${oneLine(j.company, 40)}* - ${oneLine(j.title)}`);
-    lines.push(`${j.score}/100 - ${oneLine(j.location || 'Remote', 40)} - ${age <= 0 ? 'today' : age + 'd ago'}`);
+    lines.push(`*${safeField(j.company, 40)}* - ${safeField(j.title)}`);
+    lines.push(`${j.score}/100 - ${safeField(j.location || 'Remote', 40)} - ${age <= 0 ? 'today' : age + 'd ago'}`);
     lines.push(oneLine(short(j.directUrl ?? j.url), 160));
     lines.push('');
   }
