@@ -61,6 +61,10 @@ const safeField = (s: string, max = 90) => {
   // them afterwards instead and "ht*tps://evil.com/x" slips past the link rules
   // and then reassembles into a live link in the message.
   const flat = oneLine(s, max * 2)
+    // NFKC folds the width variants, so fullwidth letters become plain ones
+    .normalize('NFKC')
+    // the dots a browser accepts as a label separator but a plain /\./ misses
+    .replace(/[。｡․‧]/g, '.')
     .replace(/[­​-‏⁠﻿]/g, '')   // soft hyphen, zero width, bidi marks
     // * _ ~ ` are emphasis on WhatsApp and Telegram, and the header is the one
     // bold line in the message: a title must not be able to impersonate it
@@ -69,8 +73,10 @@ const safeField = (s: string, max = 90) => {
   return flat
     .replace(/\b[a-z][a-z0-9+.-]{1,10}:\/\/\S+/gi, '[link]')          // any scheme, not only http
     .replace(/(https?:\/\/|www\.)\S+/gi, '[link]')
-    // any domain followed by a path - which is every shortener, bit.ly/x included
-    .replace(new RegExp(`\\b[a-z0-9-]+\\.(?!(?:${NOT_A_TLD})\\b)[a-z]{2,24}/\\S*`, 'gi'), '[link]')
+    // any domain followed by a path - every shortener, bit.ly/x included. The
+    // letter classes are Unicode-aware: a Cyrillic lookalike domain resolves
+    // just as well as an ASCII one, so matching only [a-z] would miss it
+    .replace(new RegExp(`[\\p{L}\\p{N}-]+\\.(?!(?:${NOT_A_TLD})\\b)[\\p{L}]{2,24}/\\S*`, 'giu'), '[link]')
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?:[:/]\S*)?/g, '[link]')      // bare IPv4, with or without a path
     .trim()
     .slice(0, max);
