@@ -67,25 +67,39 @@ example `https://jobs.ashbyhq.com/**ready**/...` or `https://boards.greenhouse.i
   ranking as a reading order, not a verdict.
 - **Sources change.** If one starts returning nothing, the run logs `FAILED` and carries on.
 
-## The WhatsApp digest
+## The daily message
 
-The report only helps if you read it, so each run sends the top five new matches to your own
-WhatsApp. Nothing is sent when nothing new crossed the threshold.
+The report only helps if you read it, so each run sends the top five new
+matches to your phone, with a link straight to the report. Nothing is sent
+when nothing new crossed the threshold.
 
-Setup, free and without a business account:
+Pick whichever transport suits you - the first one configured is the one used.
 
-1. Save **+34 644 94 58 67** as a contact and send it exactly:
-   `I allow callmebot to send me messages`
-2. It replies with an API key, usually within a minute. If nothing comes back,
-   the docs say to wait 24 hours before retrying - the bot rate-limits repeat
-   requests from the same number rather than answering them.
-3. `cp secrets.example.json secrets.json` and put your number and that key in it.
-   `secrets.json` is gitignored and never leaves the machine.
+**Telegram** (recommended: free, reliable, no business account, 2 minutes)
 
-Then `node src/index.ts` ends with `WhatsApp sent to +91...`. Twilio is supported too if you
-ever want delivery receipts: set `transport: "twilio"` with `accountSid`, `authToken` and
-`from` in the same file. With neither configured the digest is written to `out/digest.txt`
-and a one-click `wa.me` link is printed. `--no-msg` skips it.
+1. Message [@BotFather](https://t.me/botfather), send `/newbot`, answer two questions.
+2. Put the token it gives you in `secrets.json` as `messaging.botToken`.
+3. Open your new bot, press Start, say anything.
+4. `node src/index.ts --chat-id` prints your chat id. Put it in as `messaging.chatId`.
+
+**ntfy** (no account at all)
+
+Install the ntfy app, subscribe to a topic nobody would guess - say
+`jobscout-7f3a91` - and set `messaging.topic` to it. Tapping the notification
+opens the report. Anyone who guesses the topic can read it, so make it random.
+
+**Slack or Discord**: set `messaging.webhook` to an incoming webhook URL.
+
+**WhatsApp** is also supported through CallMeBot: message
+`I allow callmebot to send me messages` to **+34 644 94 58 67** and it replies
+with a key for `messaging.apikey`, alongside `messaging.phone`. It is an
+unofficial free bridge run by one person, so it is sometimes silent and there
+is nobody to ask; their docs say to wait 24 hours before retrying. WhatsApp
+itself cannot send automated messages without a Meta Business account and
+pre-approved templates, which a digest does not fit. Twilio is wired in too,
+but its sandbox needs re-joining every 72 hours.
+
+`--no-msg` skips the message entirely.
 
 ## Running it in the cloud
 
@@ -122,7 +136,7 @@ git, and its token is read-only.
 | Vercel - Storage | - | Add Upstash Redis; it sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` |
 | Vercel - Env vars | `REPORT_KEY` | Any long random string |
 | GitHub - Secrets | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Copy from Vercel |
-| GitHub - Secrets | `JOBSCOUT_WA_PHONE`, `JOBSCOUT_WA_APIKEY` | Your number and the CallMeBot key |
+| GitHub - Secrets | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Or `NTFY_TOPIC`, or `JOBSCOUT_WEBHOOK` |
 | GitHub - Secrets | `JOBSCOUT_REPORT_URL` | `https://<your-app>.vercel.app/r?k=<REPORT_KEY>` |
 
 Then run the workflow once by hand (Actions tab, "scout", Run workflow) instead

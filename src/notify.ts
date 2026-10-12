@@ -16,16 +16,24 @@ import { writeFileSync } from 'node:fs';
 import type { Scored } from './score.ts';
 
 export type WhatsAppConfig = {
-  transport?: 'callmebot' | 'twilio' | 'none';
+  transport?: 'telegram' | 'ntfy' | 'webhook' | 'callmebot' | 'twilio' | 'none';
   phone?: string;          // your number in international form, e.g. +919552565520
   apikey?: string;         // callmebot
   accountSid?: string;     // twilio
   authToken?: string;      // twilio
   from?: string;           // twilio sandbox number, e.g. +14155238886
+  botToken?: string;       // telegram
+  chatId?: string;         // telegram
+  topic?: string;          // ntfy
+  server?: string;         // ntfy, if self-hosted
+  webhook?: string;        // any Slack or Discord incoming webhook URL
   maxJobs?: number;
 };
 
 const short = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\?.*$/, '');
+
+/** Strips the WhatsApp emphasis marks for transports that do not render them. */
+export const plain = (text: string) => text.replace(/\*(.+?)\*/g, '$1');
 
 /** A digest that reads like a note from a person who looked, not a dump. */
 export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, max = 5): string {
@@ -72,7 +80,8 @@ export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, m
  */
 function redact(s: string, c: WhatsAppConfig): string {
   let out = s;
-  for (const v of [c.apikey, c.authToken, c.accountSid, process.env.JOBSCOUT_REPORT_URL]) {
+  for (const v of [c.apikey, c.authToken, c.accountSid, c.botToken, c.topic, c.webhook,
+                   process.env.JOBSCOUT_REPORT_URL]) {
     if (v) out = out.split(v).join('[redacted]');
   }
   if (c.phone) out = out.split(c.phone).join(maskPhone(c.phone));
@@ -91,6 +100,54 @@ async function sendCallMeBot(text: string, c: WhatsAppConfig): Promise<void> {
     const why = redact(body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), c);
     throw new Error(`callmebot refused: ${why.slice(0, 160)}`);
   }
+}
+
+/**
+ * Telegram. The most reliable of the lot and free with no business account:
+ * @BotFather gives you a bot token in under a minute. `--chat-id` finds the
+ * chat id once you have sent the bot a message.
+ */
+async function sendTelegram(text: string, c: WhatsAppConfig): Promise<void> {
+  const res = await fetch(`https://api.telegram.org/bot${c.botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: c.chatId,
+      text: plain(text),
+      disable_web_page_preview: true,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || (body as any).ok === false) {
+    throw new Error(redact(`telegram: ${(body as any).description ?? res.status}`, c));
+  }
+}
+
+/** ntfy.sh: no account at all, just an app and a topic nobody else guesses. */
+async function sendNtfy(text: string, c: WhatsAppConfig): Promise<void> {
+  const base = c.server ?? 'https://ntfy.sh';
+  const site = process.env.JOBSCOUT_REPORT_URL;
+  const res = await fetch(`${base}/${c.topic}`, {
+    method: 'POST',
+    headers: {
+      title: 'Job scout',
+      tags: 'briefcase',
+      ...(site ? { click: site } : {}),
+    },
+    body: plain(text),
+  });
+  if (!res.ok) throw new Error(`ntfy ${res.status}: ${(await res.text()).slice(0, 120)}`);
+}
+
+/** Slack or Discord incoming webhook - both accept a JSON body with text. */
+async function sendWebhook(text: string, c: WhatsAppConfig): Promise<void> {
+  const discord = /discord(app)?\.com/.test(c.webhook ?? '');
+  const res = await fetch(c.webhook!, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(discord ? { content: plain(text) } : { text: plain(text) }),
+  });
+  if (!res.ok) throw new Error(`webhook ${res.status}: ${(await res.text()).slice(0, 120)}`);
 }
 
 async function sendTwilio(text: string, c: WhatsAppConfig): Promise<void> {
@@ -117,8 +174,29 @@ export async function notify(
   const inCI = Boolean(process.env.CI);
   if (!inCI) writeFileSync(digestPath, text, 'utf8');
 
-  const transport = cfg.transport ?? (cfg.apikey ? 'callmebot' : cfg.authToken ? 'twilio' : 'none');
+  const transport = cfg.transport ?? (
+    cfg.botToken && cfg.chatId ? 'telegram'
+    : cfg.topic ? 'ntfy'
+    : cfg.webhook ? 'webhook'
+    : cfg.apikey ? 'callmebot'
+    : cfg.authToken ? 'twilio'
+    : 'none');
   try {
+    if (transport === 'telegram' && cfg.botToken && cfg.chatId) {
+      await sendTelegram(text, cfg);
+      log('  sent on Telegram');
+      return;
+    }
+    if (transport === 'ntfy' && cfg.topic) {
+      await sendNtfy(text, cfg);
+      log('  pushed via ntfy');
+      return;
+    }
+    if (transport === 'webhook' && cfg.webhook) {
+      await sendWebhook(text, cfg);
+      log('  posted to the webhook');
+      return;
+    }
     if (transport === 'callmebot' && cfg.phone && cfg.apikey) {
       await sendCallMeBot(text, cfg);
       log(`  WhatsApp sent to ${maskPhone(cfg.phone)}`);
@@ -130,14 +208,14 @@ export async function notify(
       return;
     }
     if (inCI) {
-      log('  WhatsApp not configured - set JOBSCOUT_WA_PHONE and JOBSCOUT_WA_APIKEY');
+      log('  no messaging transport configured - see the README');
       return;
     }
-    log(`  WhatsApp not configured - digest written to ${digestPath}`);
+    log(`  no messaging transport configured - digest written to ${digestPath}`);
     log(`  one-click share: https://wa.me/?text=${encodeURIComponent(text).slice(0, 1800)}`);
   } catch (err: any) {
     // a failed message must never fail the run: the report is already written
-    log(`  WhatsApp failed (${redact(err.message, cfg)})`);
+    log(`  message failed (${redact(err.message, cfg)})`);
     if (!inCI) log(`  digest kept at ${digestPath}`);
   }
 }

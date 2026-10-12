@@ -6,6 +6,7 @@
  *   node src/index.ts --open     also open the report in your browser
  *   node src/index.ts --no-msg   skip the WhatsApp digest
  *   node src/index.ts --publish  also push this report to the hosted page
+ *   node src/index.ts --chat-id  print your Telegram chat id, then exit
  *
  * With a KV configured (in CI) the state, report and digest go to Redis instead
  * of the local data/, out/ and drafts/ folders. See the README.
@@ -40,11 +41,36 @@ const log = (...m: any[]) => console.log(...m);
 const quiet = Boolean(process.env.CI) || args.has('--quiet');
 const detail = (...m: any[]) => { if (!quiet) console.log(...m); };
 
+/** --chat-id: ask Telegram which chat your bot can talk to, after you message it. */
+async function telegramChatId(token: string): Promise<void> {
+  const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+  const body: any = await res.json();
+  if (!body.ok) { console.log(`Telegram said: ${body.description}`); return; }
+  const chats = new Map<string, string>();
+  for (const u of body.result ?? []) {
+    const c = u.message?.chat ?? u.channel_post?.chat;
+    if (c) chats.set(String(c.id), `${c.first_name ?? c.title ?? ''} (${c.type})`);
+  }
+  if (!chats.size) {
+    console.log('No messages yet. Open your bot in Telegram, press Start, say anything, then run this again.');
+    return;
+  }
+  console.log('Your chat ids:');
+  for (const [id, who] of chats) console.log(`  ${id}  ${who}`);
+}
+
 async function main() {
   const started = Date.now();
   const profile = readJson(p('profile.json'));
   const secrets = readJson(p('secrets.json'), {});
   configureKv(secrets.kv?.url, secrets.kv?.token);
+
+  if (args.has('--chat-id')) {
+    const token = process.env.TELEGRAM_BOT_TOKEN ?? secrets.messaging?.botToken;
+    if (!token) { console.log('Put your bot token in secrets.json as messaging.botToken first.'); return; }
+    await telegramChatId(token);
+    return;
+  }
   // watchlist.json in the repo is a seed only. The boards discovered by running
   // it are a record of where someone is looking, so they are kept outside the
   // repo - in the KV in CI, in data/ on the laptop - and merged in here.
@@ -184,14 +210,20 @@ async function main() {
   // the digest is only worth sending when something changed, otherwise a daily
   // task turns into a daily notification you learn to ignore
   if (!args.has('--no-msg')) {
+    // secrets.json on the laptop, environment in CI; whichever is set wins
+    const m = secrets.messaging ?? secrets.whatsapp ?? {};
     const cfg: WhatsAppConfig = {
-      ...(secrets.whatsapp ?? {}),
-      phone: process.env.JOBSCOUT_WA_PHONE ?? secrets.whatsapp?.phone,
-      apikey: process.env.JOBSCOUT_WA_APIKEY ?? secrets.whatsapp?.apikey,
+      ...m,
+      phone: process.env.JOBSCOUT_WA_PHONE ?? m.phone,
+      apikey: process.env.JOBSCOUT_WA_APIKEY ?? m.apikey,
+      botToken: process.env.TELEGRAM_BOT_TOKEN ?? m.botToken,
+      chatId: process.env.TELEGRAM_CHAT_ID ?? m.chatId,
+      topic: process.env.NTFY_TOPIC ?? m.topic,
+      webhook: process.env.JOBSCOUT_WEBHOOK ?? m.webhook,
     };
     const fresh = scored.filter((s) => newIds.has(s.id) && s.score >= profile.thresholds.worthALook);
     const digest = buildDigest(fresh.length ? fresh : [], newIds, profile, cfg.maxJobs ?? 5);
-    log('WhatsApp       :');
+    log('Message        :');
     await notify(digest, cfg, p('out', 'digest.txt'), log);
   }
 
