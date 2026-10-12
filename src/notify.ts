@@ -52,7 +52,15 @@ export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, m
     lines.push(short(j.directUrl ?? j.url));
     lines.push('');
   }
-  lines.push('Prep packs are in drafts/, full list in out/report.html');
+  // a tappable link to the hosted report, when there is one. WhatsApp only
+  // linkifies a bare URL, so it goes on its own line with nothing around it.
+  const site = process.env.JOBSCOUT_REPORT_URL;
+  if (site) {
+    lines.push('Full list and prep packs:');
+    lines.push(site);
+  } else {
+    lines.push('Prep packs are in drafts/, full list in out/report.html');
+  }
   return lines.join('\n');
 }
 

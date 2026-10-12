@@ -84,3 +84,42 @@ Then `node src/index.ts` ends with `WhatsApp sent to +91...`. Twilio is supporte
 ever want delivery receipts: set `transport: "twilio"` with `accountSid`, `authToken` and
 `from` in the same file. With neither configured the digest is written to `out/digest.txt`
 and a one-click `wa.me` link is printed. `--no-msg` skips it.
+
+## Running it in the cloud
+
+The laptop is off most of the time, so the daily run lives on GitHub Actions and
+the report is served by Vercel. Nothing is scheduled locally any more, though
+`npm run scout` still works exactly as before.
+
+```
+08:00 IST   GitHub Actions: scrape, score, write packs, send WhatsApp
+            -> rendered report into Redis (Upstash / Vercel KV)
+            -> any newly found company boards committed back to watchlist.json
+anytime     https://<your-app>.vercel.app/r?k=<REPORT_KEY>  reads it back
+```
+
+Actions is the runner rather than a Vercel cron for three reasons: a full run
+takes about 70 seconds against a 60-second function limit, Hobby crons fire
+once a day only, and a serverless function has no writable disk to keep "new
+since last" in. Actions has a six-hour budget and the state lives in Redis.
+
+**This repo is public, so the generated data is deliberately not in it.** The
+job list, the scores and the prep packs go to Redis, never to git. The report
+URL also needs `?k=`, so a leaked URL alone shows nothing.
+
+### Setup
+
+| Where | Name | Value |
+|---|---|---|
+| Vercel - Storage | - | Add Upstash Redis; it sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` |
+| Vercel - Env vars | `REPORT_KEY` | Any long random string |
+| GitHub - Secrets | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Copy from Vercel |
+| GitHub - Secrets | `JOBSCOUT_WA_PHONE`, `JOBSCOUT_WA_APIKEY` | Your number and the CallMeBot key |
+| GitHub - Secrets | `JOBSCOUT_REPORT_URL` | `https://<your-app>.vercel.app/r?k=<REPORT_KEY>` |
+
+Then run the workflow once by hand (Actions tab, "scout", Run workflow) instead
+of waiting for the morning.
+
+In CI the prep packs are folded into the report as an expandable block per job,
+since there is no `drafts/` folder to write to - the preparation ends up on the
+same screen as the role, which is better on a phone anyway.

@@ -63,5 +63,10 @@
     "ats": "greenhouse",
     "token": "akersystems",
     "label": "akersystems"
+  },
+  {
+    "ats": "greenhouse",
+    "token": "neuraflash",
+    "label": "neuraflash"
   }
 ]

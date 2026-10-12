@@ -1,0 +1,41 @@
+name: scout
+
+on:
+  schedule:
+    - cron: '30 2 * * *'      # 08:00 IST
+  workflow_dispatch:           # and whenever you want it now
+
+concurrency:
+  group: scout
+  cancel-in-progress: false
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'   # runs TypeScript directly, no build step
+
+      - name: Find roles, prepare, send the digest
+        env:
+          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
+          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
+          JOBSCOUT_WA_PHONE: ${{ secrets.JOBSCOUT_WA_PHONE }}
+          JOBSCOUT_WA_APIKEY: ${{ secrets.JOBSCOUT_WA_APIKEY }}
+          JOBSCOUT_REPORT_URL: ${{ secrets.JOBSCOUT_REPORT_URL }}
+        run: node src/index.ts
+
+      # the watchlist grows itself as company boards are discovered; keeping that
+      # is the one thing worth writing back to the repo
+      - name: Keep any newly discovered company boards
+        run: |
+          if ! git diff --quiet -- watchlist.json; then
+            git config user.name  "jobscout"
+            git config user.email "noreply@github.com"
+            git commit -m "Add company boards found in today's run" -- watchlist.json
+            git push
+          fi

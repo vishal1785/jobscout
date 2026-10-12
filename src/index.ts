@@ -6,6 +6,9 @@
  *   node src/index.ts --open     also open the report in your browser
  *   node src/index.ts --no-msg   skip the WhatsApp digest
  *
+ * With a KV configured (in CI) the state, report and digest go to Redis instead
+ * of the local data/, out/ and drafts/ folders. See the README.
+ *
  * Nothing is ever submitted. The tool finds and prepares; you apply.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
@@ -18,6 +21,7 @@ import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks } from './direct.ts';
 import { buildReport } from './report.ts';
 import { buildDigest, notify, type WhatsAppConfig } from './notify.ts';
+import { kvConfigured, load, save, KEYS } from './store.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const p = (...parts: string[]) => join(root, ...parts);
@@ -32,7 +36,11 @@ async function main() {
   const profile = readJson(p('profile.json'));
   const watchlist: Watch[] = readJson(p('watchlist.json'), []);
   const storePath = p('data', 'jobs.json');
-  const store: { seen: Record<string, string>; jobs: Job[] } = readJson(storePath, { seen: {}, jobs: [] });
+  const store: { seen: Record<string, string>; jobs: Job[] } =
+    kvConfigured
+      ? { ...(await load(KEYS.state, storePath, { seen: {} as Record<string, string> })), jobs: [] }
+      : readJson(storePath, { seen: {}, jobs: [] });
+  if (kvConfigured) log('State: Redis (KV)');
 
   let jobs: Job[] = store.jobs;
   if (!args.has('--no-fetch')) {
@@ -90,30 +98,45 @@ async function main() {
     if (!s.directUrl) s.directUrl = direct.get(s.id) ?? jobs.find((j) => j.id === s.id)?.directUrl;
   }
 
-  // prep packs for anything above the threshold, newest first, without rewriting existing ones
-  mkdirSync(p('drafts'), { recursive: true });
-  const existing = new Set(readdirSync(p('drafts')));
+  // prep packs for anything above the threshold
+  const packText = new Map<string, string>();
   let packs = 0;
-  for (const j of scored.filter((s) => s.score >= profile.thresholds.pack)) {
-    const file = `${slug(j)}.md`;
-    if (existing.has(file)) continue;          // never overwrite: you may have edited it
-    writeFileSync(p('drafts', file), buildPack(j, profile), 'utf8');
-    packs++;
+  if (kvConfigured) {
+    // no disk in CI: the pack rides along inside the report, which is nicer on a
+    // phone anyway - the preparation is on the same screen as the job
+    for (const j of scored.filter((s) => s.score >= profile.thresholds.pack)) {
+      packText.set(j.id, buildPack(j, profile));
+      packs++;
+    }
+  } else {
+    mkdirSync(p('drafts'), { recursive: true });
+    const existing = new Set(readdirSync(p('drafts')));
+    for (const j of scored.filter((s) => s.score >= profile.thresholds.pack)) {
+      const file = `${slug(j)}.md`;
+      if (existing.has(file)) continue;        // never overwrite: you may have edited it
+      writeFileSync(p('drafts', file), buildPack(j, profile), 'utf8');
+      packs++;
+    }
   }
 
   const stats = { fetched: jobs.length, newCount: newIds.size, packs };
-  mkdirSync(p('out'), { recursive: true });
   const reportPath = p('out', 'report.html');
-  writeFileSync(reportPath, buildReport(scored, newIds, profile, stats), 'utf8');
+  const html = buildReport(scored, newIds, profile, stats, packText);
+  await save(KEYS.report, reportPath, html);
 
   // keep the store small: drop anything not seen in this run and older than 60 days
   const cutoff = Date.now() - 60 * 86_400_000;
-  store.jobs = jobs;
   for (const [id, firstSeen] of Object.entries(store.seen)) {
     if (new Date(firstSeen).getTime() < cutoff && !jobs.some((j) => j.id === id)) delete store.seen[id];
   }
-  mkdirSync(p('data'), { recursive: true });
-  writeFileSync(storePath, JSON.stringify(store), 'utf8');
+  if (kvConfigured) {
+    await save(KEYS.state, storePath, JSON.stringify({ seen: store.seen }));
+    await save(KEYS.ranAt, p('data', 'ran-at.txt'), new Date().toISOString());
+  } else {
+    store.jobs = jobs;
+    mkdirSync(p('data'), { recursive: true });
+    writeFileSync(storePath, JSON.stringify(store), 'utf8');
+  }
 
   const strong = scored.filter((s) => s.score >= profile.thresholds.strong);
   const worth = scored.filter((s) => s.score >= profile.thresholds.worthALook && s.score < profile.thresholds.strong);

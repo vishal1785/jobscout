@@ -19,7 +19,7 @@ const ELIG_LABEL: Record<string, string> = {
   restricted: 'Restricted',
 };
 
-function card(j: Scored, isNew: boolean, packed: boolean): string {
+function card(j: Scored, isNew: boolean, packed: boolean, pack?: string): string {
   const age = Math.round((Date.now() - new Date(j.postedAt).getTime()) / 86_400_000);
   return `
   <article class="job ${j.eligibility}">
@@ -40,15 +40,19 @@ function card(j: Scored, isNew: boolean, packed: boolean): string {
     <p class="actions">
       <a class="btn" href="${safeUrl(j.directUrl ?? j.url)}" target="_blank" rel="noopener">${j.directUrl ? 'Apply direct' : 'Open posting'}</a>
       ${j.directUrl ? `<a class="btn ghost" href="${safeUrl(j.url)}" target="_blank" rel="noopener">Listing</a>` : ''}
-      ${packed ? `<a class="btn ghost" href="../drafts/${esc(slug(j))}.md">Prep pack</a>` : ''}
+      ${packed && !pack ? `<a class="btn ghost" href="../drafts/${esc(slug(j))}.md">Prep pack</a>` : ''}
     </p>
+    ${pack ? `<details class="pack"><summary>Prep pack</summary><pre>${esc(pack)}</pre></details>` : ''}
   </article>`;
 }
 
 const byNewest = (a: Scored, b: Scored) =>
   new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
 
-export function buildReport(jobs: Scored[], newIds: Set<string>, profile: any, stats: any): string {
+export function buildReport(
+  jobs: Scored[], newIds: Set<string>, profile: any, stats: any,
+  packs: Map<string, string> = new Map(),
+): string {
   const strong = jobs.filter((j) => j.score >= profile.thresholds.strong).sort(byNewest);
   const worth = jobs.filter((j) => j.score >= profile.thresholds.worthALook && j.score < profile.thresholds.strong).sort(byNewest);
   const restricted = jobs
@@ -60,7 +64,7 @@ export function buildReport(jobs: Scored[], newIds: Set<string>, profile: any, s
     <section>
       <h2>${title} <span class="count">${list.length}</span></h2>
       <p class="note">${note}</p>
-      ${list.length ? list.map((j) => card(j, newIds.has(j.id), j.score >= profile.thresholds.pack)).join('') : '<p class="empty">Nothing today.</p>'}
+      ${list.length ? list.map((j) => card(j, newIds.has(j.id), j.score >= profile.thresholds.pack, packs.get(j.id))).join('') : '<p class="empty">Nothing today.</p>'}
     </section>`;
 
   return `<!doctype html>
@@ -103,6 +107,10 @@ export function buildReport(jobs: Scored[], newIds: Set<string>, profile: any, s
   .btn{font-family:var(--mono);font-size:12px;text-decoration:none;padding:7px 12px;background:var(--rail);color:#E4F0EC}
   .btn.ghost{background:transparent;color:var(--rail);border:1px solid var(--line)}
   .btn:hover{background:#134A40;color:#fff}
+  .pack{margin:12px 0 0;border-top:1px solid var(--line);padding-top:10px}
+  .pack summary{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--rail);cursor:pointer}
+  .pack pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:1.5;background:#fff;
+            border:1px solid var(--line);padding:12px;margin:10px 0 0;overflow-x:auto;color:var(--ink)}
   footer{max-width:1000px;margin:0 auto;padding:24px clamp(18px,4vw,48px) 60px;color:var(--soft);font-size:12.5px;border-top:1px solid var(--line)}
 </style></head>
 <body>
