@@ -131,12 +131,18 @@ outside the repo - in the KV in CI, in `data/watchlist.json` on the laptop -
 and merged with the seed at startup. The scheduled run writes nothing back to
 git, and its token is read-only.
 
+Vercel is the only place that holds the KV credentials. Everything else talks
+to the deployment through `/api/store`, so the credentials are never copied
+onto a laptop or into a second set of CI secrets - which also means Vercel can
+mark them as sensitive and nobody ever needs to read them back.
+
 | Where | Name | Value |
 |---|---|---|
-| Vercel - Storage | - | Add Upstash Redis; it sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` |
-| Vercel - Env vars | `REPORT_KEY` | Any long random string |
-| GitHub - Secrets | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Copy from Vercel |
-| GitHub - Secrets | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Or `NTFY_TOPIC`, or `JOBSCOUT_WEBHOOK` |
+| Vercel - Storage | - | Add Upstash Redis; it sets the KV variables itself |
+| Vercel - Env vars | `REPORT_KEY` | Any long random string. Opens the report |
+| Vercel - Env vars | `PUBLISH_KEY` | A different long random string. Allows writing |
+| GitHub - Secrets | `JOBSCOUT_SITE`, `PUBLISH_KEY` | The deployment URL and that second string |
+| GitHub - Secrets | `NTFY_TOPIC` | Or `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`, or `JOBSCOUT_WEBHOOK` |
 | GitHub - Secrets | `JOBSCOUT_REPORT_URL` | `https://<your-app>.vercel.app/r?k=<REPORT_KEY>` |
 
 Then run the workflow once by hand (Actions tab, "scout", Run workflow) instead
@@ -163,13 +169,12 @@ to wait for 08:00 or trigger the workflow:
 node src/index.ts --publish
 ```
 
-It needs the KV credentials, either as `KV_REST_API_URL` / `KV_REST_API_TOKEN`
-in the environment or in `secrets.json`:
+It needs either the publish key or the KV credentials, in `secrets.json`:
 
 ```json
 {
-  "kv": { "url": "https://xxx.upstash.io", "token": "AX...." },
-  "whatsapp": { "phone": "+91...", "apikey": "123456" }
+  "site": { "url": "https://your-app.vercel.app", "publishKey": "..." },
+  "messaging": { "transport": "ntfy", "topic": "jobscout-..." }
 }
 ```
 

@@ -25,6 +25,8 @@ jobs:
 
       - name: Find roles, prepare, send the digest
         env:
+          JOBSCOUT_SITE: ${{ secrets.JOBSCOUT_SITE }}
+          PUBLISH_KEY: ${{ secrets.PUBLISH_KEY }}
           KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

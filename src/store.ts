@@ -15,12 +15,28 @@ import { dirname } from 'node:path';
 let url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? '';
 let token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
+// Talking to the deployment instead of to the KV directly. Vercel already holds
+// the KV credentials, so this way they are never copied onto a laptop or into a
+// second set of CI secrets - one key to publish, and nothing else to keep safe.
+let site = process.env.JOBSCOUT_SITE ?? '';
+let publishKey = process.env.PUBLISH_KEY ?? '';
+
+// the example file ships with PASTE-ME placeholders, and a half-filled
+// secrets.json must not look like working credentials
+const real = (v?: string) => Boolean(v && /^https?:\/\//i.test(v));
+
 /** Lets secrets.json supply the credentials, so the laptop needs no env vars. */
 export function configureKv(u?: string, t?: string): void {
-  if (u && t) { url = u; token = t; }
+  if (real(u) && t && !/^PASTE/i.test(t)) { url = u!; token = t; }
 }
 
-export const kvReady = () => Boolean(url && token);
+/** The deployment's base URL plus the publish key, as an alternative to the above. */
+export function configureSite(s?: string, k?: string): void {
+  if (real(s) && k && !/^PASTE/i.test(k)) { site = s!.replace(/\/+$/, ''); publishKey = k; }
+}
+
+export const kvReady = () => Boolean((url && token) || (site && publishKey));
+const viaSite = () => !(url && token) && Boolean(site && publishKey);
 
 /**
  * Whether this run keeps its state in the KV instead of local files. In CI there
@@ -30,12 +46,18 @@ export const kvReady = () => Boolean(url && token);
 export const kvConfigured = () => kvReady() && Boolean(process.env.CI);
 
 async function kv(path: string, body?: string): Promise<any> {
-  const res = await fetch(`${url}/${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'text/plain' }) },
-    body,
-  });
-  if (!res.ok) throw new Error(`kv ${path.split('/')[0]} ${res.status}: ${(await res.text()).slice(0, 120)}`);
+  const [verb, rawKey] = path.split('/');
+
+  const target = viaSite()
+    ? `${site}/api/store?k=${encodeURIComponent(publishKey)}&key=${rawKey}`
+    : `${url}/${path}`;
+  const headers: Record<string, string> = viaSite()
+    ? {}
+    : { authorization: `Bearer ${token}` };
+  if (body !== undefined) headers['content-type'] = 'text/plain';
+
+  const res = await fetch(target, { method: body === undefined ? 'GET' : 'POST', headers, body });
+  if (!res.ok) throw new Error(`store ${verb} ${res.status}: ${(await res.text()).slice(0, 120)}`);
   return res.json();
 }
 

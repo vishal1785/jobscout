@@ -23,7 +23,7 @@ import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks } from './direct.ts';
 import { buildReport } from './report.ts';
 import { buildDigest, notify, type WhatsAppConfig } from './notify.ts';
-import { kvConfigured, kvReady, configureKv, load, save, KEYS } from './store.ts';
+import { kvConfigured, kvReady, configureKv, configureSite, load, save, KEYS } from './store.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const p = (...parts: string[]) => join(root, ...parts);
@@ -64,6 +64,11 @@ async function main() {
   const profile = readJson(p('profile.json'));
   const secrets = readJson(p('secrets.json'), {});
   configureKv(secrets.kv?.url, secrets.kv?.token);
+  // or, with no KV credentials at all, go through the deployment
+  configureSite(
+    process.env.JOBSCOUT_SITE ?? secrets.site?.url,
+    process.env.PUBLISH_KEY ?? secrets.site?.publishKey,
+  );
 
   if (args.has('--chat-id')) {
     const token = process.env.TELEGRAM_BOT_TOKEN ?? secrets.messaging?.botToken;
