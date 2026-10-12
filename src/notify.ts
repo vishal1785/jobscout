@@ -32,6 +32,19 @@ export type WhatsAppConfig = {
 
 const short = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\?.*$/, '');
 
+/**
+ * Every line of the digest means something - the last two are "Full list" and
+ * the report URL - so a company or title arriving with a newline in it could
+ * forge a line and put its own link under a trustworthy label. Job text is
+ * third-party and some of it is scraped, so it is flattened to one line here.
+ */
+const oneLine = (s: string, max = 90) =>
+  String(s ?? '')
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+
 /** Strips the WhatsApp emphasis marks for transports that do not render them. */
 export const plain = (text: string) => text.replace(/\*(.+?)\*/g, '$1');
 
@@ -55,9 +68,9 @@ export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, m
 
   for (const j of pick) {
     const age = Math.round((Date.now() - +new Date(j.postedAt)) / 86_400_000);
-    lines.push(`*${j.company}* - ${j.title}`);
-    lines.push(`${j.score}/100 - ${j.location || 'Remote'} - ${age <= 0 ? 'today' : age + 'd ago'}`);
-    lines.push(short(j.directUrl ?? j.url));
+    lines.push(`*${oneLine(j.company, 40)}* - ${oneLine(j.title)}`);
+    lines.push(`${j.score}/100 - ${oneLine(j.location || 'Remote', 40)} - ${age <= 0 ? 'today' : age + 'd ago'}`);
+    lines.push(oneLine(short(j.directUrl ?? j.url), 160));
     lines.push('');
   }
   // a tappable link to the hosted report, when there is one. WhatsApp only
@@ -142,10 +155,16 @@ async function sendNtfy(text: string, c: WhatsAppConfig): Promise<void> {
 /** Slack or Discord incoming webhook - both accept a JSON body with text. */
 async function sendWebhook(text: string, c: WhatsAppConfig): Promise<void> {
   const discord = /discord(app)?\.com/.test(c.webhook ?? '');
+  const body = discord
+    // a job title containing @everyone must not ping a channel
+    ? { content: plain(text), allowed_mentions: { parse: [] } }
+    // Slack reads <...> as a link and <!channel> as a broadcast, so neutralise
+    // the three characters that start its markup
+    : { text: plain(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') };
   const res = await fetch(c.webhook!, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(discord ? { content: plain(text) } : { text: plain(text) }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`webhook ${res.status}: ${(await res.text()).slice(0, 120)}`);
 }
