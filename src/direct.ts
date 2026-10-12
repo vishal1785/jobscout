@@ -106,7 +106,11 @@ export async function resolveDirectLinks(
       }
       entry = { checked: new Date().toISOString(), board };
       cache[key] = entry;
-      if (board) { discovered.push(board); log(`  found board: ${job.company} -> ${board.ats}/${board.token}`); }
+      if (board) {
+        discovered.push(board);
+        // the company name stays out of CI logs: they are public on a public repo
+        log(process.env.CI ? '  found a company board' : `  found board: ${job.company} -> ${board.ats}/${board.token}`);
+      }
     }
 
     if (entry?.board) {

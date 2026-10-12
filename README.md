@@ -123,3 +123,11 @@ of waiting for the morning.
 In CI the prep packs are folded into the report as an expandable block per job,
 since there is no `drafts/` folder to write to - the preparation ends up on the
 same screen as the role, which is better on a phone anyway.
+
+### What the public can see
+
+The repo is public, so its Actions logs are public too. The run therefore prints
+counts only when `CI` is set - never a company, a score, a link or the digest.
+The API key, the phone number and the keyed report URL are redacted from every
+log line, including an error echoed back by CallMeBot. Run locally and you get
+the full detail as before; `--quiet` forces the CI behaviour on the laptop.

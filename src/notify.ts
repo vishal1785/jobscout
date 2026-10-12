@@ -64,6 +64,23 @@ export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, m
   return lines.join('\n');
 }
 
+/**
+ * Anything that might reach a log goes through this first. The CI logs of a
+ * public repo are world-readable, so the API key, the phone number and the
+ * keyed report URL must never appear in them - not even inside an error
+ * message echoed back by the upstream service.
+ */
+function redact(s: string, c: WhatsAppConfig): string {
+  let out = s;
+  for (const v of [c.apikey, c.authToken, c.accountSid, process.env.JOBSCOUT_REPORT_URL]) {
+    if (v) out = out.split(v).join('[redacted]');
+  }
+  if (c.phone) out = out.split(c.phone).join(maskPhone(c.phone));
+  return out;
+}
+
+const maskPhone = (p: string) => p.slice(0, 3) + '*'.repeat(Math.max(0, p.length - 5)) + p.slice(-2);
+
 async function sendCallMeBot(text: string, c: WhatsAppConfig): Promise<void> {
   const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(c.phone!)}`
     + `&apikey=${encodeURIComponent(c.apikey!)}&text=${encodeURIComponent(text)}`;
@@ -71,7 +88,8 @@ async function sendCallMeBot(text: string, c: WhatsAppConfig): Promise<void> {
   const body = await res.text();
   // they answer 200 with an HTML page even on failure, so the body is the real signal
   if (!res.ok || /error|invalid|not allowed/i.test(body)) {
-    throw new Error(`callmebot refused: ${body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)}`);
+    const why = redact(body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), c);
+    throw new Error(`callmebot refused: ${why.slice(0, 160)}`);
   }
 }
 
@@ -94,25 +112,32 @@ export async function notify(
   log = console.log,
 ): Promise<void> {
   if (!text) { log('  nothing worth a message today'); return; }
-  writeFileSync(digestPath, text, 'utf8');
+  // in CI there is no one at the terminal and the log is public, so the digest
+  // itself - which carries the keyed report URL - stays out of it
+  const inCI = Boolean(process.env.CI);
+  if (!inCI) writeFileSync(digestPath, text, 'utf8');
 
   const transport = cfg.transport ?? (cfg.apikey ? 'callmebot' : cfg.authToken ? 'twilio' : 'none');
   try {
     if (transport === 'callmebot' && cfg.phone && cfg.apikey) {
       await sendCallMeBot(text, cfg);
-      log(`  WhatsApp sent to ${cfg.phone}`);
+      log(`  WhatsApp sent to ${maskPhone(cfg.phone)}`);
       return;
     }
     if (transport === 'twilio' && cfg.phone && cfg.accountSid && cfg.authToken && cfg.from) {
       await sendTwilio(text, cfg);
-      log(`  WhatsApp sent to ${cfg.phone} via Twilio`);
+      log(`  WhatsApp sent to ${maskPhone(cfg.phone)} via Twilio`);
+      return;
+    }
+    if (inCI) {
+      log('  WhatsApp not configured - set JOBSCOUT_WA_PHONE and JOBSCOUT_WA_APIKEY');
       return;
     }
     log(`  WhatsApp not configured - digest written to ${digestPath}`);
     log(`  one-click share: https://wa.me/?text=${encodeURIComponent(text).slice(0, 1800)}`);
   } catch (err: any) {
     // a failed message must never fail the run: the report is already written
-    log(`  WhatsApp failed (${err.message})`);
-    log(`  digest kept at ${digestPath}`);
+    log(`  WhatsApp failed (${redact(err.message, cfg)})`);
+    if (!inCI) log(`  digest kept at ${digestPath}`);
   }
 }

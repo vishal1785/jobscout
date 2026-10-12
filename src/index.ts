@@ -31,6 +31,14 @@ const readJson = (f: string, fallback: any = null) =>
 const args = new Set(process.argv.slice(2));
 const log = (...m: any[]) => console.log(...m);
 
+/**
+ * CI logs on a public repo are world-readable. Counts are fine to print there;
+ * which companies he is looking at, and the links, are not. `quiet` is on
+ * automatically in CI and can be forced with --quiet.
+ */
+const quiet = Boolean(process.env.CI) || args.has('--quiet');
+const detail = (...m: any[]) => { if (!quiet) console.log(...m); };
+
 async function main() {
   const started = Date.now();
   const profile = readJson(p('profile.json'));
@@ -144,12 +152,13 @@ async function main() {
   log('');
   log(`Strong matches : ${strong.length}`);
   for (const j of strong.slice(0, 10)) {
-    log(`  ${String(j.score).padStart(3)}  ${j.company} - ${j.title}  [${j.eligibility}]`);
+    detail(`  ${String(j.score).padStart(3)}  ${j.company} - ${j.title}  [${j.eligibility}]`);
   }
   log(`Worth a look   : ${worth.length}`);
   log(`New since last : ${newIds.size}`);
   log(`Prep packs     : ${packs} written to drafts/`);
-  log(`Report         : ${reportPath}`);
+  if (!quiet) log(`Report         : ${reportPath}`);
+  else log(`Report         : ${kvConfigured ? 'stored in the KV' : 'no KV configured - nothing stored'}`);
 
   // the digest is only worth sending when something changed, otherwise a daily
   // task turns into a daily notification you learn to ignore

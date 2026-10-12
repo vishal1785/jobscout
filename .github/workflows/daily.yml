@@ -9,6 +9,9 @@ concurrency:
   group: scout
   cancel-in-progress: false
 
+permissions:
+  contents: write        # only so a grown watchlist.json can be pushed back
+
 jobs:
   scout:
     runs-on: ubuntu-latest
