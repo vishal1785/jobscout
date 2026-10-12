@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write        # only so a grown watchlist.json can be pushed back
+  contents: read         # the run writes nothing back to this public repo
 
 jobs:
   scout:
@@ -31,14 +31,3 @@ jobs:
           JOBSCOUT_WA_APIKEY: ${{ secrets.JOBSCOUT_WA_APIKEY }}
           JOBSCOUT_REPORT_URL: ${{ secrets.JOBSCOUT_REPORT_URL }}
         run: node src/index.ts
-
-      # the watchlist grows itself as company boards are discovered; keeping that
-      # is the one thing worth writing back to the repo
-      - name: Keep any newly discovered company boards
-        run: |
-          if ! git diff --quiet -- watchlist.json; then
-            git config user.name  "jobscout"
-            git config user.email "noreply@github.com"
-            git commit -m "Add company boards found in today's run" -- watchlist.json
-            git push
-          fi

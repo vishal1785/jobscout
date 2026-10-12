@@ -18,55 +18,5 @@
     "ats": "greenhouse",
     "token": "b12",
     "label": "B12"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "samsara",
-    "label": "samsara"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "salesloft",
-    "label": "salesloft"
-  },
-  {
-    "ats": "lever",
-    "token": "bluelightconsulting",
-    "label": "bluelightconsulting"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "typeform",
-    "label": "typeform"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "stripe",
-    "label": "stripe"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "vercel",
-    "label": "vercel"
-  },
-  {
-    "ats": "ashby",
-    "token": "orbit",
-    "label": "orbit"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "dataiku",
-    "label": "dataiku"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "akersystems",
-    "label": "akersystems"
-  },
-  {
-    "ats": "greenhouse",
-    "token": "neuraflash",
-    "label": "neuraflash"
   }
 ]

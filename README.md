@@ -109,6 +109,12 @@ URL also needs `?k=`, so a leaked URL alone shows nothing.
 
 ### Setup
 
+`watchlist.json` in the repo is a seed list only. The company boards the tool
+discovers by running are a record of where you are looking, so they are kept
+outside the repo - in the KV in CI, in `data/watchlist.json` on the laptop -
+and merged with the seed at startup. The scheduled run writes nothing back to
+git, and its token is read-only.
+
 | Where | Name | Value |
 |---|---|---|
 | Vercel - Storage | - | Add Upstash Redis; it sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` |

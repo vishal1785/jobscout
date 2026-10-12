@@ -42,7 +42,18 @@ const detail = (...m: any[]) => { if (!quiet) console.log(...m); };
 async function main() {
   const started = Date.now();
   const profile = readJson(p('profile.json'));
-  const watchlist: Watch[] = readJson(p('watchlist.json'), []);
+  // watchlist.json in the repo is a seed only. The boards discovered by running
+  // it are a record of where someone is looking, so they are kept outside the
+  // repo - in the KV in CI, in data/ on the laptop - and merged in here.
+  const boardsPath = p('data', 'watchlist.json');
+  const seed: Watch[] = readJson(p('watchlist.json'), []);
+  const found: Watch[] = await load(KEYS.boards, boardsPath, [] as Watch[]);
+  const watchlist: Watch[] = [];
+  const seenBoard = new Set<string>();
+  for (const w of [...seed, ...found]) {
+    const k = `${w.ats}:${w.token}`;
+    if (!seenBoard.has(k)) { seenBoard.add(k); watchlist.push(w); }
+  }
   const storePath = p('data', 'jobs.json');
   const store: { seen: Record<string, string>; jobs: Job[] } =
     kvConfigured
@@ -89,7 +100,10 @@ async function main() {
         added++;
       }
       if (added) {
-        writeFileSync(p('watchlist.json'), JSON.stringify(watchlist, null, 2), 'utf8');
+        // saved outside the repo: the seed list stays as it is in git
+        const seeded = new Set(seed.map((w) => `${w.ats}:${w.token}`));
+        const keep = watchlist.filter((w) => !seeded.has(`${w.ats}:${w.token}`));
+        await save(KEYS.boards, boardsPath, JSON.stringify(keep, null, 2));
         log(`  watchlist grew by ${added} board${added === 1 ? '' : 's'}`);
       }
     }

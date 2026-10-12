@@ -32,6 +32,7 @@ export const KEYS = {
   report: 'jobscout:report',     // the rendered HTML
   digest: 'jobscout:digest',     // the WhatsApp text, for the record
   ranAt: 'jobscout:ran-at',
+  boards: 'jobscout:watchlist',  // company boards found by running it, not a repo file
 };
 
 /** Read JSON, from the KV when configured, else from the file. */
