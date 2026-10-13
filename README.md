@@ -6,29 +6,35 @@ Finds worldwide-remote engineering roles worth your evening, and prepares for th
 you write the personal part, you send. Applications that read as machine-made get binned, and
 rightly so; the point here is to stop wasting nights on roles that were never open to you.
 
-## Run it
+## How it runs
 
-```bash
-node src/index.ts          # fetch, score, write the report and new prep packs
-node src/index.ts --open   # the same, then open the report
-node src/index.ts --no-fetch   # rebuild the report from stored jobs (fast, offline)
+Every morning, with no laptop involved:
+
+```
+08:00 IST   GitHub Actions
+              fetch ~1,000 postings, score them, write prep packs, render the report
+              -> store it via jobscout-alpha.vercel.app/api/store
+              -> push a notification to your ntfy topic
+anytime     tap the notification -> /r?k=<REPORT_KEY> -> the report, packs inside
 ```
 
-No dependencies and no build step: Node 24 runs the TypeScript directly, and `fetch` is
-built in. The report lands in `out/report.html`, prep packs in `drafts/`.
+GitHub does the work, Vercel holds and shows the result, ntfy tells you. You get a
+notification only when something new crossed the threshold, so silence means nothing worth
+your time that day. GitHub sometimes starts scheduled runs 10-30 minutes late.
+
+To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
 
 ## What it does
 
 1. **Collects** from RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads
-   and Real Work From Anywhere, plus any company boards listed in `watchlist.json` (Ashby,
-   Greenhouse and Lever are supported). All public endpoints, no logins, no bot-evasion. A
-   dead source is logged and skipped. Boards over 150 postings are capped at the newest 150,
-   so one staffing agency cannot drown the rest.
+   and Real Work From Anywhere, plus company boards on Ashby, Greenhouse and Lever. All public
+   endpoints, no logins. A dead source is logged and skipped, and any board over 150 postings
+   is capped at its newest 150 so one staffing agency cannot drown the rest.
 2. **De-duplicates** on company plus title, preferring the company's own board over an
-   aggregator, because applying direct beats applying through a middleman.
+   aggregator's copy.
 3. **Judges eligibility**, the thing that matters most from India. Most "remote" jobs are
-   remote-within-one-country. Each posting is read for wording and bucketed:
-   - `worldwide` - says anywhere, global, or names India or Asia
+   remote-within-one-country, so each posting is bucketed:
+   - `worldwide` - says anywhere or global, or names India or Asia
    - `friendly` - a region you can work with: Europe, EMEA, UK, APAC
    - `unclear` - nothing stated; worth a check
    - `restricted` - US-only, hybrid, onsite, visa or clearance wording. Scored down hard
@@ -36,147 +42,64 @@ built in. The report lands in `out/report.html`, prep packs in `drafts/`.
 4. **Scores** the fit: engineering title, seniority, your stack, the differentiators that set
    you apart (LLM and agent work, Airflow, Databricks), minus the gaps. A gap in the title
    (say "Java Engineer") costs far more than the same word buried in a requirements list.
-5. **Writes a prep pack** for anything above 60: why you fit, which projects to lead with,
-   what to be honest about, ATS keywords the posting uses that your resume lacks, and a letter
-   skeleton with a blank marked `[YOUR HOOK]`. It will not write the hook. That sentence is
-   the whole difference between a personal application and a generated one.
-6. **Reports** everything to a single HTML file, grouped into strong matches, worth a look,
-   and good-role-wrong-geography.
-
-Existing packs in `drafts/` are never overwritten, so your edits are safe.
+5. **Finds the direct link**: for promising roles it looks the company up on Ashby, Greenhouse
+   and Lever, so you can apply on their own board. A company found this way is fetched
+   natively from then on.
+6. **Writes a prep pack** for anything scoring 60+: why you fit, which projects to lead with,
+   what to be honest about, ATS keywords you lack, and a letter skeleton with a blank marked
+   `[YOUR HOOK]`. It will not write the hook. That sentence is the whole difference between a
+   personal application and a generated one.
 
 ## Tuning
 
-Everything lives in `profile.json`:
+Everything lives in `profile.json`; push a change and the next run uses it.
 
 - `titles.wanted` / `titles.reject` - what counts as your kind of role
 - `skills.core` / `skills.differentiators` / `skills.gaps` - keywords and weights
-- `eligibility.great` / `good` / `bad` - the phrases that decide the geography bucket
+- `eligibility.great` / `good` / `bad` / `notMine` - phrases that decide the geography bucket
 - `projects` - the lead paragraph and trigger words for each of your projects
 - `resumeKeywords` - what your resume already says, used to spot missing ATS keywords
 - `thresholds` - when a pack is written, and the strong / worth-a-look cutoffs
 
-Add companies to watch in `watchlist.json`. The token is the slug in their board URL, for
-example `https://jobs.ashbyhq.com/**ready**/...` or `https://boards.greenhouse.io/**b12**`.
+`watchlist.json` holds a few company boards to always fetch. The token is the slug in the
+board URL, e.g. `jobs.ashbyhq.com/ready` or `boards.greenhouse.io/b12`.
 
-## Honest limits
+## Setup
 
-- **Eligibility is a guess** from the wording of a posting. Verify before applying.
-- **Aggregators lag.** A role can be filled while still listed; check the company's own page.
-- **Scoring is keyword-based.** It cannot tell a thoughtful team from a body shop. Treat the
-  ranking as a reading order, not a verdict.
-- **Sources change.** If one starts returning nothing, the run logs `FAILED` and carries on.
-
-## The daily message
-
-The report only helps if you read it, so each run sends the top five new
-matches to your phone, with a link straight to the report. Nothing is sent
-when nothing new crossed the threshold.
-
-Pick whichever transport suits you - the first one configured is the one used.
-
-**Telegram** (recommended: free, reliable, no business account, 2 minutes)
-
-1. Message [@BotFather](https://t.me/botfather), send `/newbot`, answer two questions.
-2. Put the token it gives you in `secrets.json` as `messaging.botToken`.
-3. Open your new bot, press Start, say anything.
-4. `node src/index.ts --chat-id` prints your chat id. Put it in as `messaging.chatId`.
-
-**ntfy** (no account at all)
-
-Install the ntfy app, subscribe to a topic nobody would guess - say
-`jobscout-7f3a91` - and set `messaging.topic` to it. Tapping the notification
-opens the report. Anyone who guesses the topic can read it, so make it random.
-
-**Slack or Discord**: set `messaging.webhook` to an incoming webhook URL.
-
-**WhatsApp** is also supported through CallMeBot: message
-`I allow callmebot to send me messages` to **+34 644 94 58 67** and it replies
-with a key for `messaging.apikey`, alongside `messaging.phone`. It is an
-unofficial free bridge run by one person, so it is sometimes silent and there
-is nobody to ask; their docs say to wait 24 hours before retrying. WhatsApp
-itself cannot send automated messages without a Meta Business account and
-pre-approved templates, which a digest does not fit. Twilio is wired in too,
-but its sandbox needs re-joining every 72 hours.
-
-`--no-msg` skips the message entirely.
-
-## Running it in the cloud
-
-The laptop is off most of the time, so the daily run lives on GitHub Actions and
-the report is served by Vercel. Nothing is scheduled locally any more, though
-`npm run scout` still works exactly as before.
-
-```
-08:00 IST   GitHub Actions: scrape, score, write packs, send WhatsApp
-            -> rendered report into Redis (Upstash / Vercel KV)
-            -> any newly found company boards committed back to watchlist.json
-anytime     https://<your-app>.vercel.app/r?k=<REPORT_KEY>  reads it back
-```
-
-Actions is the runner rather than a Vercel cron for three reasons: a full run
-takes about 70 seconds against a 60-second function limit, Hobby crons fire
-once a day only, and a serverless function has no writable disk to keep "new
-since last" in. Actions has a six-hour budget and the state lives in Redis.
-
-**This repo is public, so the generated data is deliberately not in it.** The
-job list, the scores and the prep packs go to Redis, never to git. The report
-URL also needs `?k=`, so a leaked URL alone shows nothing.
-
-### Setup
-
-`watchlist.json` in the repo is a seed list only. The company boards the tool
-discovers by running are a record of where you are looking, so they are kept
-outside the repo - in the KV in CI, in `data/watchlist.json` on the laptop -
-and merged with the seed at startup. The scheduled run writes nothing back to
-git, and its token is read-only.
-
-Vercel is the only place that holds the KV credentials. Everything else talks
-to the deployment through `/api/store`, so the credentials are never copied
-onto a laptop or into a second set of CI secrets - which also means Vercel can
-mark them as sensitive and nobody ever needs to read them back.
-
-| Where | Name | Value |
+| Where | Name | What it is |
 |---|---|---|
-| Vercel - Storage | - | Add Upstash Redis; it sets the KV variables itself |
-| Vercel - Env vars | `REPORT_KEY` | Any long random string. Opens the report |
+| Vercel - Storage | - | Upstash for Redis, connected to the project. It sets its own credentials, which nothing else ever needs |
+| Vercel - Env vars | `REPORT_KEY` | A long random string. Opens the report |
 | Vercel - Env vars | `PUBLISH_KEY` | A different long random string. Allows writing |
-| GitHub - Secrets | `JOBSCOUT_SITE`, `PUBLISH_KEY` | The deployment URL and that second string |
-| GitHub - Secrets | `NTFY_TOPIC` | Or `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`, or `JOBSCOUT_WEBHOOK` |
-| GitHub - Secrets | `JOBSCOUT_REPORT_URL` | `https://<your-app>.vercel.app/r?k=<REPORT_KEY>` |
+| GitHub - Actions secrets | `JOBSCOUT_SITE` | `https://jobscout-alpha.vercel.app` |
+| GitHub - Actions secrets | `PUBLISH_KEY` | The same value as on Vercel - the handshake between the two |
+| GitHub - Actions secrets | `NTFY_TOPIC` | Your ntfy topic |
+| GitHub - Actions secrets | `JOBSCOUT_REPORT_URL` | `https://jobscout-alpha.vercel.app/r?k=<REPORT_KEY>` |
 
-Then run the workflow once by hand (Actions tab, "scout", Run workflow) instead
-of waiting for the morning.
+Redeploy on Vercel after changing its env vars; they only apply to new deployments. A run
+with a GitHub secret missing fails straight away and names it.
 
-In CI the prep packs are folded into the report as an expandable block per job,
-since there is no `drafts/` folder to write to - the preparation ends up on the
-same screen as the role, which is better on a phone anyway.
+**ntfy**: subscribe to your topic in the app. Anyone who knows an ntfy.sh topic can read it,
+so make it random - it is effectively a password.
 
-### What the public can see
+## Privacy
 
-The repo is public, so its Actions logs are public too. The run therefore prints
-counts only when `CI` is set - never a company, a score, a link or the digest.
-The API key, the phone number and the keyed report URL are redacted from every
-log line, including an error echoed back by CallMeBot. Run locally and you get
-the full detail as before; `--quiet` forces the CI behaviour on the laptop.
+The repo is public, so nothing it generates goes into git. The job list, scores and prep
+packs live in Redis, the report needs its key, and the page is `noindex`. Actions logs on a
+public repo are public too, so a cloud run prints counts only - never a company, a score or a
+link. Two keys rather than one because the report key travels in every notification and ends
+up in browser history: whoever can read the report must not be able to replace it.
 
-### Seeing the report before the first scheduled run
+## Running it on a laptop
 
-`--publish` pushes a laptop run straight to the hosted page, so you do not have
-to wait for 08:00 or trigger the workflow:
+Optional - nothing needs to run locally. But it is handy for trying a `profile.json` change:
 
-```
-node src/index.ts --publish
-```
-
-It needs either the publish key or the KV credentials, in `secrets.json`:
-
-```json
-{
-  "site": { "url": "https://your-app.vercel.app", "publishKey": "..." },
-  "messaging": { "transport": "ntfy", "topic": "jobscout-..." }
-}
+```bash
+node src/index.ts              # fetch and score; report in out/, prep packs in drafts/
+node src/index.ts --no-fetch   # rebuild from the last fetch, instantly
+node src/index.ts --open       # either of the above, then open the report
 ```
 
-The published report carries each prep pack inline, read back from `drafts/`,
-so anything you have edited there is what shows up online.
+No dependencies and no build step: Node 24 runs the TypeScript directly. Locally, existing
+packs in `drafts/` are never overwritten, so edits are safe. Put `{ "ntfyTopic": "..." }` in
+`secrets.json` (gitignored) to get a notification from a local run too.
