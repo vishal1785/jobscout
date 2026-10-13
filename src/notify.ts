@@ -1,42 +1,21 @@
 /**
- * WhatsApp delivery.
+ * The morning notification, via ntfy.
  *
- * The report only helps if you actually look at it, so the run ends by sending
- * a short digest to your own WhatsApp. Two transports, both optional:
- *
- *   callmebot  free, no business account. Message "I allow callmebot to send me
- *              messages" to +34 644 94 58 67 on WhatsApp, and it replies with an
- *              API key. Only sends to your own number, which is all this needs.
- *   twilio     for when you want delivery receipts or a second recipient.
- *
- * With neither configured nothing is sent and the digest is written to
- * out/whatsapp.txt, with a wa.me link printed so one click still shares it.
+ * ntfy needs no account: the phone app subscribes to a topic, and anything
+ * posted to that topic arrives as a notification. Tapping it opens the report.
+ * The topic is the only secret - anyone who knows it can read it - so it is
+ * random, and it is redacted from anything that reaches a log.
  */
 import { writeFileSync } from 'node:fs';
 import type { Scored } from './score.ts';
 
-export type WhatsAppConfig = {
-  transport?: 'telegram' | 'ntfy' | 'webhook' | 'callmebot' | 'twilio' | 'none';
-  phone?: string;          // your number in international form, e.g. +919552565520
-  apikey?: string;         // callmebot
-  accountSid?: string;     // twilio
-  authToken?: string;      // twilio
-  from?: string;           // twilio sandbox number, e.g. +14155238886
-  botToken?: string;       // telegram
-  chatId?: string;         // telegram
-  topic?: string;          // ntfy
-  server?: string;         // ntfy, if self-hosted
-  webhook?: string;        // any Slack or Discord incoming webhook URL
-  maxJobs?: number;
-};
-
 const short = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\?.*$/, '');
 
 /**
- * Every line of the digest means something - the last two are "Full list" and
- * the report URL - so a company or title arriving with a newline in it could
- * forge a line and put its own link under a trustworthy label. Job text is
- * third-party and some of it is scraped, so it is flattened to one line here.
+ * Every line of the digest means something - the last is the report link - so
+ * a company or title arriving with a newline could forge a line and put its own
+ * link under a trustworthy label. Job text is third-party and some of it is
+ * scraped, so it is flattened to one line first.
  */
 const oneLine = (s: string, max = 90) =>
   String(s ?? '')
@@ -45,47 +24,37 @@ const oneLine = (s: string, max = 90) =>
     .trim()
     .slice(0, max);
 
-/**
- * The only links in a digest should be the ones this tool put there: the job
- * posting and the report. Chat apps linkify a URL anywhere in a message, so a
- * title carrying one renders as a tappable link beside a real job - and some
- * of this text is scraped from a page rather than read from an API. Links in
- * third-party fields are therefore removed, not merely kept on one line.
- */
+// characters a phone ignores when deciding what is a link, so stripping them
+// AFTER link detection would let "ht*tps://evil.com/x" reassemble into one
+const INVISIBLE = new RegExp('[\\u00ad\\u200b-\\u200f\\u2060\\ufeff]', 'g');
+const EMPHASIS = /[*_~`]/g;
+// dots a browser accepts as a domain separator that a plain \. misses
+const DOT_LOOKALIKES = new RegExp('[\\u3002\\uff61\\u2024\\u2027]', 'g');
 // extensions that look like a domain but are how engineers write a stack:
 // Node.js/React and ASP.NET must survive a job title untouched
 const NOT_A_TLD = 'js|ts|jsx|tsx|mjs|py|rb|go|php|net|sql|md|css|html|json|yml|sh';
-const safeField = (s: string, max = 90) => {
-  // Order matters. Characters that a chat client drops when it decides what is
-  // a link have to go FIRST: emphasis marks and invisible codepoints. Strip
-  // them afterwards instead and "ht*tps://evil.com/x" slips past the link rules
-  // and then reassembles into a live link in the message.
-  const flat = oneLine(s, max * 2)
-    // NFKC folds the width variants, so fullwidth letters become plain ones
-    .normalize('NFKC')
-    // the dots a browser accepts as a label separator but a plain /\./ misses
-    .replace(/[。｡․‧]/g, '.')
-    .replace(/[­​-‏⁠﻿]/g, '')   // soft hyphen, zero width, bidi marks
-    // * _ ~ ` are emphasis on WhatsApp and Telegram, and the header is the one
-    // bold line in the message: a title must not be able to impersonate it
-    .replace(/[*_~`]/g, '');
+const DOMAIN_WITH_PATH = new RegExp(`[\\p{L}\\p{N}-]+\\.(?!(?:${NOT_A_TLD})\\b)[\\p{L}]{2,24}/\\S*`, 'giu');
 
-  return flat
-    .replace(/\b[a-z][a-z0-9+.-]{1,10}:\/\/\S+/gi, '[link]')          // any scheme, not only http
+/**
+ * The only links in a digest should be the ones this tool put there. Phones
+ * linkify a URL anywhere in a notification, so links in third-party fields are
+ * removed - including shorteners, other schemes, bare IPs, fullwidth and
+ * lookalike-dot spellings, and Cyrillic or Greek homograph domains.
+ */
+const safeField = (s: string, max = 90) =>
+  oneLine(s, max * 2)
+    .normalize('NFKC')                  // folds fullwidth letters to plain ones
+    .replace(DOT_LOOKALIKES, '.')
+    .replace(INVISIBLE, '')
+    .replace(EMPHASIS, '')
+    .replace(/\b[a-z][a-z0-9+.-]{1,10}:\/\/\S+/gi, '[link]')       // any scheme
     .replace(/(https?:\/\/|www\.)\S+/gi, '[link]')
-    // any domain followed by a path - every shortener, bit.ly/x included. The
-    // letter classes are Unicode-aware: a Cyrillic lookalike domain resolves
-    // just as well as an ASCII one, so matching only [a-z] would miss it
-    .replace(new RegExp(`[\\p{L}\\p{N}-]+\\.(?!(?:${NOT_A_TLD})\\b)[\\p{L}]{2,24}/\\S*`, 'giu'), '[link]')
-    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?:[:/]\S*)?/g, '[link]')      // bare IPv4, with or without a path
+    .replace(DOMAIN_WITH_PATH, '[link]')                              // bit.ly/x and friends
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?:[:/]\S*)?/g, '[link]')    // bare IPv4
     .trim()
     .slice(0, max);
-};
 
-/** Strips the WhatsApp emphasis marks for transports that do not render them. */
-export const plain = (text: string) => text.replace(/\*(.+?)\*/g, '$1');
-
-/** A digest that reads like a note from a person who looked, not a dump. */
+/** A digest that reads like a note from someone who looked, not a dump. */
 export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, max = 5): string {
   const byNewest = (a: Scored, b: Scored) => +new Date(b.postedAt) - +new Date(a.postedAt);
   const strong = jobs.filter((j) => j.score >= profile.thresholds.strong).sort(byNewest);
@@ -98,180 +67,51 @@ export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, m
 
   const freshCount = pick.filter((j) => newIds.has(j.id)).length;
   const lines = [
-    `*Job scout* ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`,
     `${strong.length} strong, ${worth.length} worth a look${freshCount ? `, ${freshCount} new` : ''}`,
     '',
   ];
-
   for (const j of pick) {
     const age = Math.round((Date.now() - +new Date(j.postedAt)) / 86_400_000);
-    lines.push(`*${safeField(j.company, 40)}* - ${safeField(j.title)}`);
+    lines.push(`${safeField(j.company, 40)} - ${safeField(j.title)}`);
     lines.push(`${j.score}/100 - ${safeField(j.location || 'Remote', 40)} - ${age <= 0 ? 'today' : age + 'd ago'}`);
     lines.push(oneLine(short(j.directUrl ?? j.url), 160));
     lines.push('');
   }
-  // a tappable link to the hosted report, when there is one. WhatsApp only
-  // linkifies a bare URL, so it goes on its own line with nothing around it.
-  const site = process.env.JOBSCOUT_REPORT_URL;
-  if (site) {
-    lines.push('Full list and prep packs:');
-    lines.push(site);
-  } else {
-    lines.push('Prep packs are in drafts/, full list in out/report.html');
-  }
+  lines.push(process.env.JOBSCOUT_REPORT_URL
+    ? 'Tap to open the full list and prep packs.'
+    : 'Full list in out/report.html, prep packs in drafts/');
   return lines.join('\n');
 }
 
-/**
- * Anything that might reach a log goes through this first. The CI logs of a
- * public repo are world-readable, so the API key, the phone number and the
- * keyed report URL must never appear in them - not even inside an error
- * message echoed back by the upstream service.
- */
-function redact(s: string, c: WhatsAppConfig): string {
+/** The topic and the keyed report URL must never reach a log, even inside an error. */
+function redact(s: string, topic?: string): string {
   let out = s;
-  for (const v of [c.apikey, c.authToken, c.accountSid, c.botToken, c.topic, c.webhook,
-                   process.env.JOBSCOUT_REPORT_URL]) {
-    if (v) out = out.split(v).join('[redacted]');
-  }
-  if (c.phone) out = out.split(c.phone).join(maskPhone(c.phone));
+  for (const v of [topic, process.env.JOBSCOUT_REPORT_URL]) if (v) out = out.split(v).join('[redacted]');
   return out;
 }
 
-const maskPhone = (p: string) => p.slice(0, 3) + '*'.repeat(Math.max(0, p.length - 5)) + p.slice(-2);
-
-async function sendCallMeBot(text: string, c: WhatsAppConfig): Promise<void> {
-  const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(c.phone!)}`
-    + `&apikey=${encodeURIComponent(c.apikey!)}&text=${encodeURIComponent(text)}`;
-  const res = await fetch(url);
-  const body = await res.text();
-  // they answer 200 with an HTML page even on failure, so the body is the real signal
-  if (!res.ok || /error|invalid|not allowed/i.test(body)) {
-    const why = redact(body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), c);
-    throw new Error(`callmebot refused: ${why.slice(0, 160)}`);
-  }
-}
-
-/**
- * Telegram. The most reliable of the lot and free with no business account:
- * @BotFather gives you a bot token in under a minute. `--chat-id` finds the
- * chat id once you have sent the bot a message.
- */
-async function sendTelegram(text: string, c: WhatsAppConfig): Promise<void> {
-  const res = await fetch(`https://api.telegram.org/bot${c.botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: c.chatId,
-      text: plain(text),
-      disable_web_page_preview: true,
-    }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || (body as any).ok === false) {
-    throw new Error(redact(`telegram: ${(body as any).description ?? res.status}`, c));
-  }
-}
-
-/** ntfy.sh: no account at all, just an app and a topic nobody else guesses. */
-async function sendNtfy(text: string, c: WhatsAppConfig): Promise<void> {
-  const base = c.server ?? 'https://ntfy.sh';
-  const site = process.env.JOBSCOUT_REPORT_URL;
-  const res = await fetch(`${base}/${c.topic}`, {
-    method: 'POST',
-    headers: {
-      title: 'Job scout',
-      tags: 'briefcase',
-      ...(site ? { click: site } : {}),
-    },
-    body: plain(text),
-  });
-  if (!res.ok) throw new Error(`ntfy ${res.status}: ${(await res.text()).slice(0, 120)}`);
-}
-
-/** Slack or Discord incoming webhook - both accept a JSON body with text. */
-async function sendWebhook(text: string, c: WhatsAppConfig): Promise<void> {
-  const discord = /discord(app)?\.com/.test(c.webhook ?? '');
-  const body = discord
-    // a job title containing @everyone must not ping a channel
-    ? { content: plain(text), allowed_mentions: { parse: [] } }
-    // Slack reads <...> as a link and <!channel> as a broadcast, so neutralise
-    // the three characters that start its markup
-    : { text: plain(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') };
-  const res = await fetch(c.webhook!, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`webhook ${res.status}: ${(await res.text()).slice(0, 120)}`);
-}
-
-async function sendTwilio(text: string, c: WhatsAppConfig): Promise<void> {
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${c.accountSid}/Messages.json`, {
-    method: 'POST',
-    headers: {
-      authorization: 'Basic ' + Buffer.from(`${c.accountSid}:${c.authToken}`).toString('base64'),
-      'content-type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ From: `whatsapp:${c.from}`, To: `whatsapp:${c.phone}`, Body: text }),
-  });
-  if (!res.ok) throw new Error(`twilio ${res.status}: ${(await res.text()).slice(0, 160)}`);
-}
-
-export async function notify(
-  text: string,
-  cfg: WhatsAppConfig,
-  digestPath: string,
-  log = console.log,
-): Promise<void> {
-  if (!text) { log('  nothing worth a message today'); return; }
-  // in CI there is no one at the terminal and the log is public, so the digest
-  // itself - which carries the keyed report URL - stays out of it
+export async function notify(text: string, topic: string | undefined, digestPath: string, log = console.log): Promise<void> {
+  if (!text) { log('  nothing new worth a notification'); return; }
   const inCI = Boolean(process.env.CI);
-  if (!inCI) writeFileSync(digestPath, text, 'utf8');
 
-  const transport = cfg.transport ?? (
-    cfg.botToken && cfg.chatId ? 'telegram'
-    : cfg.topic ? 'ntfy'
-    : cfg.webhook ? 'webhook'
-    : cfg.apikey ? 'callmebot'
-    : cfg.authToken ? 'twilio'
-    : 'none');
+  if (!topic) {
+    if (inCI) { log('  NTFY_TOPIC is not set - no notification sent'); return; }
+    writeFileSync(digestPath, text, 'utf8');
+    log(`  no ntfy topic configured - digest written to ${digestPath}`);
+    return;
+  }
+
   try {
-    if (transport === 'telegram' && cfg.botToken && cfg.chatId) {
-      await sendTelegram(text, cfg);
-      log('  sent on Telegram');
-      return;
-    }
-    if (transport === 'ntfy' && cfg.topic) {
-      await sendNtfy(text, cfg);
-      log('  pushed via ntfy');
-      return;
-    }
-    if (transport === 'webhook' && cfg.webhook) {
-      await sendWebhook(text, cfg);
-      log('  posted to the webhook');
-      return;
-    }
-    if (transport === 'callmebot' && cfg.phone && cfg.apikey) {
-      await sendCallMeBot(text, cfg);
-      log(`  WhatsApp sent to ${maskPhone(cfg.phone)}`);
-      return;
-    }
-    if (transport === 'twilio' && cfg.phone && cfg.accountSid && cfg.authToken && cfg.from) {
-      await sendTwilio(text, cfg);
-      log(`  WhatsApp sent to ${maskPhone(cfg.phone)} via Twilio`);
-      return;
-    }
-    if (inCI) {
-      log('  no messaging transport configured - see the README');
-      return;
-    }
-    log(`  no messaging transport configured - digest written to ${digestPath}`);
-    log(`  one-click share: https://wa.me/?text=${encodeURIComponent(text).slice(0, 1800)}`);
+    const report = process.env.JOBSCOUT_REPORT_URL;
+    const res = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
+      method: 'POST',
+      headers: { title: 'Job scout', tags: 'briefcase', ...(report ? { click: report } : {}) },
+      body: text,
+    });
+    if (!res.ok) throw new Error(`ntfy ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    log('  sent via ntfy');
   } catch (err: any) {
-    // a failed message must never fail the run: the report is already written
-    log(`  message failed (${redact(err.message, cfg)})`);
-    if (!inCI) log(`  digest kept at ${digestPath}`);
+    // a failed notification must never fail the run: the report is already stored
+    log(`  notification failed (${redact(err.message, topic)})`);
   }
 }

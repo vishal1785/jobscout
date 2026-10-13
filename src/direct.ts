@@ -9,12 +9,14 @@
  * Deliberately polite: only the jobs above the score threshold, a hard cap per
  * run, a pause between probes, and a cache so a company is only looked up once.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import type { Scored } from './score.ts';
 
 type BoardHit = { ats: 'ashby' | 'greenhouse' | 'lever'; token: string; postings: Array<{ title: string; url: string }> };
-type CacheEntry = { checked: string; board: BoardHit | null };
-type Cache = Record<string, CacheEntry>;
+// the cache remembers WHICH board a company uses, not its postings: those are
+// fetched fresh from the watchlist on the next run anyway, and keeping every
+// posting of every company would bloat the store a little more each day
+type CacheEntry = { checked: string; board: { ats: BoardHit['ats']; token: string } | null };
+export type BoardCache = Record<string, CacheEntry>;
 
 const UA = 'jobscout/1.0 (personal job search; contact vishal1785@gmail.com)';
 const CACHE_DAYS = 21;
@@ -65,7 +67,7 @@ function bestPosting(title: string, postings: Array<{ title: string; url: string
   return best && best.score >= 0.5 ? best.url : null;
 }
 
-export function boardHome(board: BoardHit): string {
+export function boardHome(board: { ats: BoardHit['ats']; token: string }): string {
   return board.ats === 'ashby' ? `https://jobs.ashbyhq.com/${board.token}`
     : board.ats === 'greenhouse' ? `https://boards.greenhouse.io/${board.token}`
     : `https://jobs.lever.co/${board.token}`;
@@ -73,11 +75,10 @@ export function boardHome(board: BoardHit): string {
 
 export async function resolveDirectLinks(
   jobs: Scored[],
-  cachePath: string,
+  cache: BoardCache,
   opts: { minScore: number; maxProbes: number },
   log = console.log,
-): Promise<{ resolved: number; discovered: BoardHit[] }> {
-  const cache: Cache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf8')) : {};
+): Promise<{ resolved: number; discovered: BoardHit[]; cache: BoardCache }> {
   const fresh = (e?: CacheEntry) => e && Date.now() - new Date(e.checked).getTime() < CACHE_DAYS * 86_400_000;
 
   const discovered: BoardHit[] = [];
@@ -91,6 +92,7 @@ export async function resolveDirectLinks(
 
     const key = job.company.toLowerCase().trim();
     let entry = cache[key];
+    let found: BoardHit | null = null;            // postings, only on the run that finds it
 
     if (!fresh(entry)) {
       if (probes >= opts.maxProbes) continue;
@@ -104,8 +106,9 @@ export async function resolveDirectLinks(
           if (probes >= opts.maxProbes * 3) break outer;
         }
       }
-      entry = { checked: new Date().toISOString(), board };
+      entry = { checked: new Date().toISOString(), board: board && { ats: board.ats, token: board.token } };
       cache[key] = entry;
+      found = board;
       if (board) {
         discovered.push(board);
         // the company name stays out of CI logs: they are public on a public repo
@@ -114,11 +117,12 @@ export async function resolveDirectLinks(
     }
 
     if (entry?.board) {
-      job.directUrl = bestPosting(job.title, entry.board.postings) ?? boardHome(entry.board);
+      job.directUrl = (found && bestPosting(job.title, found.postings)) ?? boardHome(entry.board);
       resolved++;
     }
   }
 
-  writeFileSync(cachePath, JSON.stringify(cache, null, 1), 'utf8');
-  return { resolved, discovered };
+  // forget lookups older than the cache window, so the store does not only grow
+  for (const [k, e] of Object.entries(cache)) if (!fresh(e)) delete cache[k];
+  return { resolved, discovered, cache };
 }

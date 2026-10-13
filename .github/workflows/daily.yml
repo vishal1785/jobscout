@@ -2,38 +2,31 @@ name: scout
 
 on:
   schedule:
-    - cron: '30 2 * * *'      # 08:00 IST
-  workflow_dispatch:           # and whenever you want it now
+    - cron: '30 2 * * *'      # 08:00 IST (GitHub may start it 10-30 minutes late)
+  workflow_dispatch:           # the Run workflow button
 
 concurrency:
   group: scout
   cancel-in-progress: false
 
 permissions:
-  contents: read         # the run writes nothing back to this public repo
+  contents: read               # the run writes nothing back to this public repo
 
 jobs:
   scout:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '24'   # runs TypeScript directly, no build step
+          node-version: '24'   # runs the TypeScript directly, no build step
 
-      - name: Find roles, prepare, send the digest
+      - name: Find roles, prepare, notify
         env:
           JOBSCOUT_SITE: ${{ secrets.JOBSCOUT_SITE }}
           PUBLISH_KEY: ${{ secrets.PUBLISH_KEY }}
-          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
-          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          JOBSCOUT_WEBHOOK: ${{ secrets.JOBSCOUT_WEBHOOK }}
-          JOBSCOUT_WA_PHONE: ${{ secrets.JOBSCOUT_WA_PHONE }}
-          JOBSCOUT_WA_APIKEY: ${{ secrets.JOBSCOUT_WA_APIKEY }}
           JOBSCOUT_REPORT_URL: ${{ secrets.JOBSCOUT_REPORT_URL }}
         run: node src/index.ts

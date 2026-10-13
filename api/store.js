@@ -6,8 +6,8 @@
  * credentials are never copied anywhere - and if they are ever rotated, they
  * are rotated in one place.
  *
- *   GET  /api/store?k=<REPORT_KEY>&key=jobscout:state    read
- *   POST /api/store?k=<PUBLISH_KEY>&key=jobscout:report  write, body is the value
+ *   GET  /api/store?key=jobscout:state    read   (Authorization: Bearer <PUBLISH_KEY or REPORT_KEY>)
+ *   POST /api/store?key=jobscout:report   write  (Authorization: Bearer <PUBLISH_KEY>), body is the value
  *
  * Reads use the same key as the report. Writes need PUBLISH_KEY, a separate
  * secret, because the report key travels in every notification URL and lands
@@ -37,7 +37,10 @@ export default async function handler(req, res) {
   if (!KV_URL || !KV_TOKEN) return json(res, 500, { error: 'no KV connected to this deployment' });
 
   const url = new URL(req.url, 'http://x');
-  const k = url.searchParams.get('k') ?? '';
+  // the key arrives as a bearer token so it stays out of access logs; the
+  // query string is still accepted for a quick manual check in a browser
+  const bearer = /^Bearer (.+)$/.exec(req.headers?.authorization ?? '')?.[1];
+  const k = bearer ?? url.searchParams.get('k') ?? '';
   const key = url.searchParams.get('key') ?? '';
   const writing = req.method === 'POST';
 

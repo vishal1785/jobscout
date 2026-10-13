@@ -124,7 +124,8 @@ export function buildReport(
   ${section('Good role, wrong geography', 'Scored down because the posting reads as country-restricted. Occasionally worth an email asking whether they hire from India.', restricted)}
 </main>
 <footer>
-  Sources: RemoteOK, Remotive, Himalayas, We Work Remotely, plus the company boards in watchlist.json.
+  Sources: RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads, Real Work From Anywhere,
+  and company boards on Ashby, Greenhouse and Lever.
   Eligibility is guessed from the wording of each posting and is sometimes wrong - always verify before applying.
   Nothing here is submitted automatically: every application stays yours to write and send.
 </footer>
