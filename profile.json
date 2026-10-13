@@ -72,8 +72,10 @@
   },
   "skills": {
     "core": {
-      "typescript": 10,
       "react": 10,
+      "javascript": 10,
+      "typescript": 10,
+      "redux": 10,
       "next.js": 8,
       "nextjs": 8,
       "node": 8,
@@ -82,12 +84,10 @@
       "aws": 8,
       "postgres": 7,
       "postgresql": 7,
-      "fastapi": 5,
-      "javascript": 5,
-      "tailwind": 3,
-      "redux": 3,
-      "rest api": 3,
-      "graphql": 2
+      "fastapi": 7,
+      "graphql": 7,
+      "tailwind": 7,
+      "rest api": 5
     },
     "differentiators": {
       "llm": 9,
