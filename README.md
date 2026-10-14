@@ -20,7 +20,13 @@ anytime     tap the notification -> /r?k=<REPORT_KEY> -> the report, packs insid
 
 GitHub does the work, Vercel holds and shows the result, ntfy tells you. You get a
 notification only when something new crossed the threshold, so silence means nothing worth
-your time that day. GitHub sometimes starts scheduled runs 10-30 minutes late.
+your time that day.
+
+The run is started by **Vercel's cron**, not GitHub's. GitHub's scheduler is best-effort and
+has started this run seven hours late; Vercel's fires within the hour (07:30-08:30 IST) and
+calls `api/kick.js`, which asks GitHub to run the workflow - the same as pressing the button.
+GitHub's own schedule stays on at 09:43 IST as a backup; if the main run already happened,
+the backup finds nothing new and sends nothing.
 
 To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
 
@@ -71,6 +77,8 @@ board URL, e.g. `jobs.ashbyhq.com/ready` or `boards.greenhouse.io/b12`.
 | Vercel - Storage | - | Upstash for Redis, connected to the project. It sets its own credentials, which nothing else ever needs |
 | Vercel - Env vars | `REPORT_KEY` | A long random string. Opens the report |
 | Vercel - Env vars | `PUBLISH_KEY` | A different long random string. Allows writing |
+| Vercel - Env vars | `CRON_SECRET` | A random string. Vercel sends it with each cron call so only its cron can start a run |
+| Vercel - Env vars | `GH_DISPATCH_TOKEN` | A fine-grained GitHub token for this repo only, with Actions: Read and write |
 | GitHub - Actions secrets | `JOBSCOUT_SITE` | `https://jobscout-alpha.vercel.app` |
 | GitHub - Actions secrets | `PUBLISH_KEY` | The same value as on Vercel - the handshake between the two |
 | GitHub - Actions secrets | `NTFY_TOPIC` | Your ntfy topic |

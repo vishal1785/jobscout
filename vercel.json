@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [{ "source": "/r", "destination": "/api/report" }],
+  "crons": [{ "path": "/api/kick", "schedule": "0 2 * * *" }],
   "headers": [
     { "source": "/(.*)", "headers": [{ "key": "x-robots-tag", "value": "noindex, nofollow" }] }
   ]

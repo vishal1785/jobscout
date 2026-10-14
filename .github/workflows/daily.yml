@@ -2,7 +2,11 @@ name: scout
 
 on:
   schedule:
-    - cron: '30 2 * * *'      # 08:00 IST (GitHub may start it 10-30 minutes late)
+    # Backup only. The morning run is started by Vercel's cron (api/kick.js),
+    # because GitHub's scheduler is best-effort and has run hours late. An
+    # off-peak minute, after the main run: if that one already ran, this one
+    # finds nothing new and sends nothing.
+    - cron: '13 4 * * *'      # 09:43 IST
   workflow_dispatch:           # the Run workflow button
 
 concurrency:
