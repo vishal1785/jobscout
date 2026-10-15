@@ -31,16 +31,19 @@ work runs on Actions rather than in a Vercel function.
 | File | Role |
 |---|---|
 | `src/index.ts` | Orchestrator. Flags: `--no-fetch`, `--open` (local only) |
-| `src/sources.ts` | RemoteOK, Remotive, Himalayas, WWR (RSS), Jobicy, Working Nomads, Real Work From Anywhere (scraped home page + sitemap dates), plus Ashby/Greenhouse/Lever boards. Per-source failures are isolated. Boards capped at newest 150. Non-http(s) URLs dropped at ingest |
-| `src/score.ts` | Eligibility first (worldwide / friendly / unclear / restricted, factor 1 / 0.85 / 0.6 / 0.18), then fit. Location+title restrictions beat description wording. Gap in the title costs x2.5 |
+| `src/sources.ts` | RemoteOK, Remotive, Himalayas, WWR (RSS), Jobicy, Working Nomads, Real Work From Anywhere (scraped home page + sitemap dates), plus Ashby/Greenhouse/Lever (incl. EU instance, `lever-eu`)/SmartRecruiters boards. SmartRecruiters lists carry no description, so only the newest 40 engineering titles get a detail fetch. `isBoard()` is the one test for "came from a company board". Per-source failures are isolated. Boards capped at newest 150. Non-http(s) URLs dropped at ingest |
+| `src/score.ts` | Eligibility first (worldwide / india / friendly / unclear / restricted, factor 1 / 1 / 0.85 / 0.6 / 0.18), then fit. `india` = every place in the location is in India (`whereInIndia`, `eligibility.indiaPlaces`), checked before blocked words so "Hyderabad (Hybrid)" passes; India among other countries = worldwide. India jobs get their own report tab with `thresholds.india` (35) and are left out of Strong/Worth. Location+title restrictions beat description wording. Gap in the title costs x2.5 |
 | `src/direct.ts` | Finds the company's own board for promising jobs ("Apply direct"); cache keeps board identity only, never postings; no filesystem access |
+| `src/forms.ts` | Reads the application form (Greenhouse `?questions=true`, Ashby's public job-page GraphQL, Lever's apply page) of jobs >= worthALook, cap 60, no cache. A US work-authorization question sets `job.formBlock`, which scores 0 (skipped, not demoted). Ignored when scoped to US applicants or paired with a non-US question (DuckDuckGo's form) |
 | `src/tailor.ts` | Prep pack per job scoring >= thresholds.pack |
 | `src/report.ts` | Self-contained HTML in the resume's palette. All text escaped; hrefs only http(s) via `safeUrl` |
 | `src/notify.ts` | ntfy only. Digest sanitiser `safeField` - see Security |
 | `src/store.ts` | Local mode: files in data/, out/. Cloud mode (`CI` set): `/api/store` with `Authorization: Bearer PUBLISH_KEY`. `assertCloudConfig` fails fast naming a missing secret |
 | `api/report.js`, `api/store.js`, `api/kick.js` | The Vercel functions (plain JS, ESM) |
 | `profile.json` | All tuning: titles, skill weights, gaps, eligibility phrases, projects, thresholds. The owner edits this |
-| `watchlist.json` | Seed boards only. Discovered boards live in Redis (`jobscout:watchlist`) |
+| `companies.json` | The owner's list of companies to watch (public; the owner chose that). Name only -> board looked up each run; `board: "ats:token"` pins it; `careers` -> "Check by hand" in the report. Replaced watchlist.json. Discovered boards still live in Redis (`jobscout:watchlist`) |
+| `src/companies.ts` | Resolves companies.json to boards. `node src/companies.ts` prints each entry's board, job count and two sample titles, to catch a slug that belongs to another company ("wise" on Greenhouse is not Wise) |
+| `src/time.ts` | IST formatting (`Asia/Kolkata`, set explicitly since Actions runs in UTC). Report: posted = date only, found (first seen, from `state.seen`) = date and time |
 | `test/fake-vercel.mjs` | Local stand-in for Vercel + Upstash; see Testing |
 
 Store keys: `jobscout:state` (seen ids), `jobscout:report`, `jobscout:watchlist`,
@@ -106,10 +109,9 @@ Full logs need a signed-in user; the jobs endpoint shows which step failed.
 
 ## Open items
 
-- Owner to add `GH_DISPATCH_TOKEN` and `CRON_SECRET` on Vercel and redeploy; then confirm a
-  `workflow_dispatch` run appears around 02:00-03:00 UTC.
-- Idea, not built: read Greenhouse (`?questions=true`) and Ashby application forms and treat a
-  "authorized to work in the US" question as a restriction signal. Counterpart's "Remote"
-  Engineering Lead was the motivating case.
+- The Vercel cron works: its first dispatch ran 2026-10-15 02:05 UTC (07:35 IST) and
+  succeeded. GitHub's backup schedule fired 5h late again that day.
+- Known gap in the form check: wording that names several regions ("based in the U.S.,
+  Canada, LATAM, or authorized to work in one of these", seen at Ramp) is not caught.
 - Older commits contain discovered company names in watchlist.json history; a history rewrite was
   offered and not requested.

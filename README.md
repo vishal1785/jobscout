@@ -33,7 +33,8 @@ To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
 ## What it does
 
 1. **Collects** from RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads
-   and Real Work From Anywhere, plus company boards on Ashby, Greenhouse and Lever. All public
+   and Real Work From Anywhere, plus the company boards listed in `companies.json` (Ashby,
+   Greenhouse, Lever and SmartRecruiters). All public
    endpoints, no logins. A dead source is logged and skipped, and any board over 150 postings
    is capped at its newest 150 so one staffing agency cannot drown the rest.
 2. **De-duplicates** on company plus title, preferring the company's own board over an
@@ -51,7 +52,11 @@ To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
 5. **Finds the direct link**: for promising roles it looks the company up on Ashby, Greenhouse
    and Lever, so you can apply on their own board. A company found this way is fetched
    natively from then on.
-6. **Writes a prep pack** for anything scoring 60+: why you fit, which projects to lead with,
+6. **Reads the application form** of each promising role on Greenhouse, Ashby or Lever. A
+   "Remote" job whose form asks "Are you authorized to work in the United States?" hires
+   only in the US, so it is skipped outright, not just scored down. A question put only to
+   US applicants, next to one for everyone else (DuckDuckGo does this), does not count.
+7. **Writes a prep pack** for anything scoring 60+: why you fit, which projects to lead with,
    what to be honest about, ATS keywords you lack, and a letter skeleton with a blank marked
    `[YOUR HOOK]`. It will not write the hook. That sentence is the whole difference between a
    personal application and a generated one.
@@ -63,12 +68,35 @@ Everything lives in `profile.json`; push a change and the next run uses it.
 - `titles.wanted` / `titles.reject` - what counts as your kind of role
 - `skills.core` / `skills.differentiators` / `skills.gaps` - keywords and weights
 - `eligibility.great` / `good` / `bad` / `notMine` - phrases that decide the geography bucket
+- `eligibility.formBlocks` - application-form wording that means US-only (skips the job)
 - `projects` - the lead paragraph and trigger words for each of your projects
 - `resumeKeywords` - what your resume already says, used to spot missing ATS keywords
 - `thresholds` - when a pack is written, and the strong / worth-a-look cutoffs
 
-`watchlist.json` holds a few company boards to always fetch. The token is the slug in the
-board URL, e.g. `jobs.ashbyhq.com/ready` or `boards.greenhouse.io/b12`.
+## Companies to watch
+
+`companies.json` lists companies whose own boards are fetched on every run. To add one, add
+`{ "name": "Acme" }`; the run looks its board up on Ashby, Greenhouse and Lever. When the
+lookup lands on the wrong company, or the board is elsewhere, give it explicitly as
+`"board": "ats:token"` - `ats` is `ashby`, `greenhouse`, `lever`, `lever-eu` or
+`smartrecruiters`, and the token is the slug in the board URL (`jobs.ashbyhq.com/ready` ->
+`ashby:ready`). A company with no readable board can carry `"careers": "<url>"`; the report
+lists it under **Check by hand**. To see what each entry resolves to and how many jobs it has:
+
+```bash
+node src/companies.ts
+```
+
+The file is public, like the rest of the repo.
+
+## The report
+
+A tab bar at the top jumps to each section. Sections fold open and shut; the
+wrong-geography list and the check-by-hand list start folded. **Based in India** holds roles
+located in India (remote, hybrid or office), with its own lower bar, `thresholds.india` in
+`profile.json`; cities and states that count are in `eligibility.indiaPlaces`. A role open in
+several countries, India among them, stays in the main lists as a worldwide role. Every time is IST. Each job shows when it was posted (a date: several sources send
+only a day) and when this tool first found it (date and time).
 
 ## Setup
 

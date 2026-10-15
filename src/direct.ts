@@ -10,6 +10,7 @@
  * run, a pause between probes, and a cache so a company is only looked up once.
  */
 import type { Scored } from './score.ts';
+import { isBoard } from './sources.ts';
 
 type BoardHit = { ats: 'ashby' | 'greenhouse' | 'lever'; token: string; postings: Array<{ title: string; url: string }> };
 // the cache remembers WHICH board a company uses, not its postings: those are
@@ -32,7 +33,7 @@ export function slugVariants(company: string): string[] {
   return [...new Set([hyphen, tight].filter((s) => s.length >= 2 && s.length <= 40))];
 }
 
-async function tryBoard(ats: BoardHit['ats'], token: string): Promise<BoardHit | null> {
+export async function tryBoard(ats: BoardHit['ats'], token: string): Promise<BoardHit | null> {
   const url =
     ats === 'ashby' ? `https://api.ashbyhq.com/posting-api/job-board/${token}`
     : ats === 'greenhouse' ? `https://boards-api.greenhouse.io/v1/boards/${token}/jobs`
@@ -88,7 +89,7 @@ export async function resolveDirectLinks(
   for (const job of jobs) {
     if (job.directUrl) continue;                       // the source already gave us one
     if (job.score < opts.minScore) continue;
-    if (/^(Ashby|Greenhouse|Lever)\//.test(job.source)) continue;  // already a direct board
+    if (isBoard(job.source)) continue;               // already a direct board
 
     const key = job.company.toLowerCase().trim();
     let entry = cache[key];

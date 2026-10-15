@@ -8,6 +8,7 @@
  * is worth more than three polished paragraphs from a machine.
  */
 import type { Scored } from './score.ts';
+import { istDate, istDateTime } from './time.ts';
 
 export function buildPack(job: Scored, profile: any): string {
   const text = `${job.title} \n ${job.tags.join(' ')} \n ${job.description}`.toLowerCase();
@@ -33,7 +34,7 @@ export function buildPack(job: Scored, profile: any): string {
     .filter((kw) => text.includes(kw))
     .filter((kw) => !profile.resumeKeywords.some((r: string) => r.includes(kw) || kw.includes(r)));
 
-  const date = new Date().toISOString().slice(0, 10);
+  const date = istDateTime(Date.now());
   const salary = job.salary ? `\n- **Salary stated:** ${job.salary}` : '';
 
   return `# ${job.company} - ${job.title}
@@ -44,7 +45,7 @@ export function buildPack(job: Scored, profile: any): string {
 - **Location:** ${job.location}
 - **Eligibility:** ${job.eligibility} (${job.eligibilityWhy})
 - **Score:** ${job.score}/100
-- **Posted:** ${job.postedAt.slice(0, 10)}${salary}
+- **Posted:** ${istDate(job.postedAt) || 'unknown'}${salary}
 - **Pack written:** ${date}
 
 ## Why you fit

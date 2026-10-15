@@ -1,0 +1,27 @@
+{
+  "about": [
+    "Companies whose own job boards are fetched on every run.",
+    "To add one, add {\"name\": \"...\"}: the run looks its board up on Ashby, Greenhouse and Lever.",
+    "When the lookup finds the wrong company, or the board is elsewhere, set \"board\" to ats:token,",
+    "where ats is ashby, greenhouse, lever, lever-eu or smartrecruiters and token is the slug in its URL.",
+    "A company without a readable board can carry \"careers\": the report lists it to check by hand.",
+    "To see what every entry resolves to, and how many jobs it has: node src/companies.ts"
+  ],
+  "companies": [
+    { "name": "Ready", "board": "ashby:ready" },
+    { "name": "DuckDuckGo", "board": "ashby:duck-duck-go" },
+    { "name": "Circle", "board": "ashby:circle" },
+    { "name": "B12", "board": "greenhouse:b12" },
+    { "name": "OpenZeppelin", "board": "greenhouse:openzeppelin" },
+    { "name": "Automattic", "board": "greenhouse:automatticcareers" },
+    { "name": "Canonical", "board": "greenhouse:canonical" },
+    { "name": "Deel", "board": "ashby:Deel" },
+    { "name": "Lever", "board": "lever-eu:lever" },
+    { "name": "Wise", "board": "smartrecruiters:Wise" },
+    { "name": "Deliveroo", "board": "greenhouse:deliveroo" },
+    { "name": "Monzo", "board": "greenhouse:monzo" },
+    { "name": "Cold Labs", "careers": "https://coldlabs.ai/careers" },
+    { "name": "Google DeepMind", "careers": "https://deepmind.google/about/careers/" },
+    { "name": "Revolut", "careers": "https://www.revolut.com/careers/" }
+  ]
+}

@@ -7,7 +7,9 @@
  */
 import type { Job } from './sources.ts';
 
-export type Eligibility = 'worldwide' | 'friendly' | 'unclear' | 'restricted';
+// 'india' is a job based in India: open to him whether it is remote, hybrid or
+// in an office, and listed in its own section rather than among worldwide roles
+export type Eligibility = 'worldwide' | 'india' | 'friendly' | 'unclear' | 'restricted';
 
 export type Scored = Job & {
   score: number;
@@ -21,17 +23,49 @@ export type Scored = Job & {
 
 const has = (hay: string, needle: string) => hay.includes(needle);
 
+// words in a location field that name a way of working, not a place
+const MODE_WORDS = /\b(remote|hybrid|on-?site|in-?office|office|home[- ]based|based|fully|only|anywhere in|wfh)\b/g;
+
+/**
+ * Whether a job is in India: 'only' when every place it names is in India
+ * ("Hybrid - India", "Bengaluru, Chennai"), 'among' when India is one of
+ * several countries ("Remote: Japan, Spain, India"), which is a remote role
+ * open to him rather than an Indian one. The title counts only when the
+ * location names no place at all ("Senior Engineer (India)", location "Remote").
+ */
+export function whereInIndia(job: { title: string; location: string }, profile: any): 'only' | 'among' | null {
+  const places: string[] = profile.eligibility.indiaPlaces ?? ['india'];
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const named = (s: string) => places.some((p) => new RegExp('\\b' + escape(p) + '\\b').test(s));
+  const parts = job.location.toLowerCase()
+    .split(/[;,|/()\n]|\s-\s|\s+or\s+|\s+and\s+|:/)
+    .map((s) => s.replace(MODE_WORDS, ' ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  if (!parts.length) return named(job.title.toLowerCase()) ? 'only' : null;
+  const inIndia = parts.filter(named).length;
+  return inIndia === 0 ? null : inIndia === parts.length ? 'only' : 'among';
+}
+
 export function judgeEligibility(job: Job, profile: any): { eligibility: Eligibility; why: string } {
   const text = `${job.title} \n ${job.location} \n ${job.description}`.toLowerCase();
   // the title carries restrictions as often as the location field does:
   // "Senior Engineer (US-Based/Remote)" is not a worldwide job
   const loc = `${job.location} ${job.title}`.toLowerCase();
 
+  // the application form outranks anything the posting says: a "Remote" job
+  // whose form asks for US work authorization hires only in the US
+  if (job.formBlock) return { eligibility: 'restricted', why: `application form asks: "${job.formBlock}"` };
+
   for (const phrase of profile.eligibility.great) {
     if (has(loc, phrase)) return { eligibility: 'worldwide', why: `location says "${phrase}"` };
   }
-  // India or Asia named explicitly is as good as worldwide for him
-  if (/\bindia\b|\basia\b|\bapac\b/.test(loc)) return { eligibility: 'worldwide', why: 'India or Asia named in location' };
+  // checked before the blocked words: "Hyderabad (Hybrid)" is a job he can take,
+  // where "London (Hybrid)" is not
+  const india = whereInIndia(job, profile);
+  if (india === 'only') return { eligibility: 'india', why: 'based in India' };
+  if (india === 'among') return { eligibility: 'worldwide', why: 'India is among the listed places' };
+  // Asia named explicitly is as good as worldwide for him
+  if (/\basia\b|\bapac\b/.test(loc)) return { eligibility: 'worldwide', why: 'Asia named in location' };
 
   const hardBlocks = profile.eligibility.bad.filter((p: string) => has(text, p));
   const locBlocks = profile.eligibility.bad.filter((p: string) => has(loc, p));
@@ -65,6 +99,7 @@ export function judgeEligibility(job: Job, profile: any): { eligibility: Eligibi
 
 const ELIGIBILITY_FACTOR: Record<Eligibility, number> = {
   worldwide: 1,
+  india: 1,
   friendly: 0.85,
   unclear: 0.6,
   restricted: 0.18,
@@ -126,9 +161,12 @@ export function scoreJob(job: Job, profile: any): Scored {
 
   const { eligibility, why } = judgeEligibility(job, profile);
   const raw = Math.max(0, Math.min(100, points));
-  const score = rejected ? 0 : Math.round(raw * ELIGIBILITY_FACTOR[eligibility]);
+  // a US work-authorization question on the form is skipped, not demoted:
+  // there is no flexing on that one
+  const score = rejected || job.formBlock ? 0 : Math.round(raw * ELIGIBILITY_FACTOR[eligibility]);
 
   if (rejected) reasons.unshift(`rejected: title contains "${rejected}"`);
+  else if (job.formBlock) reasons.unshift('skipped: the application form asks for US work authorization');
   reasons.push(`eligibility: ${eligibility} (${why})`);
 
   return {

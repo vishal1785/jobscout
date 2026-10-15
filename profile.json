@@ -216,6 +216,56 @@
       "portugal",
       "spain only",
       "germany only"
+    ],
+    "indiaPlaces": [
+      "india",
+      "pune",
+      "mumbai",
+      "navi mumbai",
+      "thane",
+      "bengaluru",
+      "bangalore",
+      "hyderabad",
+      "chennai",
+      "delhi",
+      "new delhi",
+      "gurgaon",
+      "gurugram",
+      "noida",
+      "kolkata",
+      "ahmedabad",
+      "kochi",
+      "jaipur",
+      "chandigarh",
+      "indore",
+      "coimbatore",
+      "trivandrum",
+      "thiruvananthapuram",
+      "maharashtra",
+      "karnataka",
+      "telangana",
+      "tamil nadu",
+      "haryana",
+      "uttar pradesh",
+      "west bengal",
+      "gujarat",
+      "kerala",
+      "rajasthan"
+    ],
+    "formBlocks": [
+      "authorized to work in the us",
+      "authorized to work in the united states",
+      "authorized to work for any employer in the us",
+      "authorized to work for any employer in the united states",
+      "eligible to work in the us",
+      "eligible to work in the united states",
+      "permitted to work in the us",
+      "permitted to work in the united states",
+      "right to work in the us",
+      "right to work in the united states",
+      "work authorization in the us",
+      "work authorization in the united states",
+      "us work authorization"
     ]
   },
   "projects": {
@@ -333,6 +383,7 @@
   "thresholds": {
     "pack": 60,
     "strong": 75,
-    "worthALook": 55
+    "worthALook": 55,
+    "india": 35
   }
 }

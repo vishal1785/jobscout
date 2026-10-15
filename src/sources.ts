@@ -16,6 +16,7 @@ export type Job = {
   tags: string[];
   salary?: string;
   directUrl?: string;    // the company's own posting, when we can find it
+  formBlock?: string;    // a question on its application form that rules him out
 };
 
 const UA = 'jobscout/1.0 (personal job search; contact vishal1785@gmail.com)';
@@ -148,10 +149,6 @@ async function weworkremotely(): Promise<Job[]> {
   return out;
 }
 
-/* ------------------------------------------- Company boards: Ashby / Greenhouse / Lever
- * Add companies to watch in watchlist.json. These are the boards that carry the
- * roles aggregators often miss, and applying direct beats applying via a board.
- */
 /* ----------------------------------------------------------------- Jobicy */
 async function jobicy(): Promise<Job[]> {
   const out: Job[] = [];
@@ -246,7 +243,16 @@ function agoToIso(n?: string, unit?: string): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
 }
 
-export type Watch = { ats: 'ashby' | 'greenhouse' | 'lever'; token: string; label?: string };
+/* -------------------------- Company boards: Ashby / Greenhouse / Lever / SmartRecruiters
+ * The companies to watch are listed in companies.json. These are the boards that
+ * carry the roles aggregators often miss, and applying direct beats applying via
+ * a board. Lever runs a separate EU instance, which some companies (Lever itself)
+ * are hosted on, hence 'lever-eu'.
+ */
+export type Watch = { ats: 'ashby' | 'greenhouse' | 'lever' | 'lever-eu' | 'smartrecruiters'; token: string; label?: string };
+
+/** A job that came straight from a company's own board, not an aggregator. */
+export const isBoard = (source: string) => /^(Ashby|Greenhouse|Lever|SmartRecruiters)\//.test(source);
 
 async function ashby(w: Watch): Promise<Job[]> {
   const data = await getJson(`https://api.ashbyhq.com/posting-api/job-board/${w.token}?includeCompensation=true`);
@@ -280,7 +286,7 @@ async function greenhouse(w: Watch): Promise<Job[]> {
 }
 
 async function lever(w: Watch): Promise<Job[]> {
-  const rows = await getJson(`https://api.lever.co/v0/postings/${w.token}?mode=json`);
+  const rows = await getJson(`https://api${w.ats === 'lever-eu' ? '.eu' : ''}.lever.co/v0/postings/${w.token}?mode=json`);
   return (rows ?? []).map((j: any) => ({
     id: `lever:${w.token}:${j.id}`,
     source: `Lever/${w.label ?? w.token}`,
@@ -294,8 +300,63 @@ async function lever(w: Watch): Promise<Job[]> {
   }));
 }
 
+// The list carries no description, and each posting's description is a request
+// of its own, so only the newest engineering-looking titles are read in full.
+// The rest still score on title and location, which is enough to rule them out.
+const ENGINEERING = /engineer|developer|architect|full[- ]?stack|front[- ]?end|back[- ]?end|\bcto\b|tech(nical)? lead/i;
+async function smartrecruiters(w: Watch): Promise<Job[]> {
+  const base = `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(w.token)}/postings`;
+  const rows: any[] = [];
+  for (let offset = 0; offset < 500; offset += 100) {
+    const page = await getJson(`${base}?limit=100&offset=${offset}`);
+    rows.push(...(page.content ?? []));
+    if (rows.length >= (page.totalFound ?? 0) || !(page.content ?? []).length) break;
+  }
+  rows.sort((a, b) => new Date(b.releasedDate).getTime() - new Date(a.releasedDate).getTime());
+
+  const details = new Map<string, any>();
+  for (const r of rows.filter((r) => ENGINEERING.test(r.name ?? '')).slice(0, 40)) {
+    try { details.set(r.id, await getJson(`${base}/${encodeURIComponent(r.id)}`)); } catch { /* list data is enough */ }
+    await new Promise((res) => setTimeout(res, 150));
+  }
+
+  return rows.filter((r) => r?.id && r?.name).map((r) => {
+    const d = details.get(r.id);
+    const sections = d?.jobAd?.sections ?? {};
+    const loc = r.location ?? {};
+    // the remote and hybrid flags are the real eligibility signal here: Wise
+    // lists most roles as hybrid in one city, and "hybrid" is a blocked word
+    const where = String(loc.fullLocation ?? [loc.city, loc.country].filter(Boolean).join(', '))
+      .replace(/(,\s*)+/g, ', ').replace(/^, |, $/g, '');
+    const mode = loc.remote ? 'Remote' : loc.hybrid ? 'Hybrid' : 'On-site';
+    return {
+      id: `smartrecruiters:${w.token}:${r.id}`,
+      source: `SmartRecruiters/${w.label ?? w.token}`,
+      company: w.label ?? r.company?.name ?? w.token,
+      title: r.name,
+      location: `${where || 'Not stated'} (${mode})`,
+      url: d?.postingUrl ?? `https://jobs.smartrecruiters.com/${encodeURIComponent(r.company?.identifier ?? w.token)}/${encodeURIComponent(r.id)}`,
+      postedAt: r.releasedDate ?? new Date().toISOString(),
+      description: stripHtml(['jobDescription', 'qualifications', 'additionalInformation'].map((k) => sections[k]?.text ?? '').join('\n')),
+      tags: [r.function?.label, r.experienceLevel?.label].filter(Boolean),
+    };
+  });
+}
+
 /* ------------------------------------------------------------------ runner */
 const BOARD_CAP = 150;
+export async function fetchBoard(w: Watch): Promise<Job[]> {
+  const rows = await (w.ats === 'ashby' ? ashby(w)
+    : w.ats === 'greenhouse' ? greenhouse(w)
+    : w.ats === 'smartrecruiters' ? smartrecruiters(w)
+    : lever(w));
+  // staffing agencies post hundreds of roles at once (Bluelight: 917) and
+  // would drown everything else: keep the newest slice of any huge board
+  return rows
+    .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime())
+    .slice(0, BOARD_CAP);
+}
+
 export async function fetchAll(watchlist: Watch[], log = console.log): Promise<Job[]> {
   const tasks: Array<[string, () => Promise<Job[]>]> = [
     ['RemoteOK', remoteok],
@@ -305,17 +366,7 @@ export async function fetchAll(watchlist: Watch[], log = console.log): Promise<J
     ['Jobicy', jobicy],
     ['WorkingNomads', workingnomads],
     ['RealWorkFromAnywhere', realworkfromanywhere],
-    ...watchlist.map((w): [string, () => Promise<Job[]>] => [
-      `${w.ats}:${w.label ?? w.token}`,
-      async () => {
-        const rows = await (w.ats === 'ashby' ? ashby(w) : w.ats === 'greenhouse' ? greenhouse(w) : lever(w));
-        // staffing agencies post hundreds of roles at once (Bluelight: 917) and
-        // would drown everything else: keep the newest slice of any huge board
-        return rows
-          .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime())
-          .slice(0, BOARD_CAP);
-      },
-    ]),
+    ...watchlist.map((w): [string, () => Promise<Job[]>] => [`${w.ats}:${w.label ?? w.token}`, () => fetchBoard(w)]),
   ];
 
   const all: Job[] = [];
@@ -337,7 +388,7 @@ export async function fetchAll(watchlist: Watch[], log = console.log): Promise<J
   for (const j of linked) if (!http(j.directUrl)) j.directUrl = undefined;
 
   // de-duplicate on company + title, keeping the direct company board over an aggregator
-  const rank = (j: Job) => (/^(Ashby|Greenhouse|Lever)\//.test(j.source) ? 0 : 1);
+  const rank = (j: Job) => (isBoard(j.source) ? 0 : 1);
   const byKey = new Map<string, Job>();
   for (const j of linked.sort((a, b) => rank(a) - rank(b))) {
     const key = `${j.company.toLowerCase().trim()}|${j.title.toLowerCase().trim()}`;

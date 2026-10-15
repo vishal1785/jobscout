@@ -17,6 +17,8 @@ import { fetchAll, type Job, type Watch } from './sources.ts';
 import { scoreAll, type Scored } from './score.ts';
 import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks, type BoardCache } from './direct.ts';
+import { checkForms } from './forms.ts';
+import { readCompanies, resolveCompanies } from './companies.ts';
 import { buildReport } from './report.ts';
 import { buildDigest, notify } from './notify.ts';
 import { inCloud, assertCloudConfig, load, save, KEYS } from './store.ts';
@@ -38,10 +40,12 @@ async function main() {
   const profile = readJson(p('profile.json'));
   const secrets = readJson(p('secrets.json'), {});
 
-  // watchlist.json in git is a seed. Boards discovered by running are a record
-  // of where you are looking, so they live in the store and merge in here.
+  // companies.json is the list you keep. Boards discovered by running are a
+  // record of where you are looking, so they live in the store and merge in here.
   const boardsPath = p('data', 'watchlist.json');
-  const seed: Watch[] = readJson(p('watchlist.json'), []);
+  const { boards: seed, unwatched } = await resolveCompanies(readCompanies(p('companies.json')));
+  log(`Companies: ${seed.length} boards, ${unwatched.length} to check by hand`);
+  for (const u of unwatched) detail(`  not fetched: ${u.name} (${u.why})`);
   const found: Watch[] = await load(KEYS.boards, boardsPath, [] as Watch[]);
   const watchlist: Watch[] = [];
   const known = new Set<string>();
@@ -71,7 +75,7 @@ async function main() {
     if (!state.seen[j.id]) { state.seen[j.id] = today; newIds.add(j.id); }
   }
 
-  const scored: Scored[] = scoreAll(jobs, profile);
+  let scored: Scored[] = scoreAll(jobs, profile);
 
   // find each promising company's own posting, so you can apply direct
   if (!args.has('--no-fetch')) {
@@ -96,6 +100,17 @@ async function main() {
     // keep the direct links on the stored jobs, so --no-fetch still has them
     const direct = new Map(scored.filter((s) => s.directUrl).map((s) => [s.id, s.directUrl!]));
     for (const j of jobs) j.directUrl = direct.get(j.id) ?? j.directUrl;
+
+    // read the forms after the direct links are known, since an aggregator's
+    // copy only leads to a form once its company board has been found
+    log('Reading application forms...');
+    const forms = await checkForms(scored, profile, { minScore: profile.thresholds.worthALook, maxReads: 60 });
+    log(`  read: ${forms.read}, unreadable: ${forms.failed}, skipped for US work authorization: ${forms.blocked.size}`);
+    for (const j of jobs) {
+      const q = forms.blocked.get(j.id);
+      if (q) { j.formBlock = q; detail(`    ${j.company} - ${j.title}: "${q}"`); }
+    }
+    if (forms.blocked.size) scored = scoreAll(jobs, profile);
   }
 
   // prep packs for anything above the threshold. In the cloud there is no
@@ -118,7 +133,7 @@ async function main() {
 
   const reportPath = p('out', 'report.html');
   const stats = { fetched: jobs.length, newCount: newIds.size, packs };
-  await save(KEYS.report, reportPath, buildReport(scored, newIds, profile, stats, packText));
+  await save(KEYS.report, reportPath, buildReport(scored, newIds, profile, stats, packText, state.seen, unwatched));
 
   // forget ids not seen this run for 60 days, so the state does not only grow
   const cutoff = Date.now() - 60 * 86_400_000;
@@ -129,12 +144,15 @@ async function main() {
   // the full job list only matters locally, for --no-fetch; the cloud keeps ids
   await save(KEYS.state, statePath, JSON.stringify(inCloud() ? { seen: state.seen } : { seen: state.seen, jobs }));
 
-  const strong = scored.filter((s) => s.score >= profile.thresholds.strong);
-  const worth = scored.filter((s) => s.score >= profile.thresholds.worthALook && s.score < profile.thresholds.strong);
+  // counted the way the report lists them: India-based roles have their own tab
+  const global = scored.filter((s) => s.eligibility !== 'india');
+  const strong = global.filter((s) => s.score >= profile.thresholds.strong);
+  const worth = global.filter((s) => s.score >= profile.thresholds.worthALook && s.score < profile.thresholds.strong);
   log('');
   log(`Strong matches : ${strong.length}`);
   for (const j of strong.slice(0, 10)) detail(`  ${String(j.score).padStart(3)}  ${j.company} - ${j.title}  [${j.eligibility}]`);
   log(`Worth a look   : ${worth.length}`);
+  log(`Based in India : ${scored.filter((s) => s.eligibility === 'india' && s.score >= (profile.thresholds.india ?? profile.thresholds.worthALook)).length}`);
   log(`New since last : ${newIds.size}`);
   log(`Prep packs     : ${packs}`);
   log(`Report         : ${inCloud() ? 'stored' : reportPath}`);
