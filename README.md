@@ -42,7 +42,14 @@ To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
 3. **Judges eligibility**, the thing that matters most from India. Most "remote" jobs are
    remote-within-one-country, so each posting is bucketed:
    - `worldwide` - says anywhere or global, or names India or Asia
-   - `friendly` - a region you can work with: Europe, EMEA, UK, APAC
+   - `india` - located in India (its own tab in the report)
+   - `friendly` - a bare "Asia", or a location of just "Remote" with a region in the description
+   - a required language other than English or Hindi ("fluent German", "native Japanese",
+     "Mandarin is a must"; not "German is a plus") makes any job `restricted`, and so does
+     "anywhere in China" or any other "anywhere in <somewhere>" short of the world
+   - a location that names any other place (London, Munich, France, "CET +/- 3h", EMEA) is
+     `restricted`: such a role hires there, whatever its description says. APAC or Asia among
+     the places counts as worldwide, since it takes in India
    - `unclear` - nothing stated; worth a check
    - `restricted` - US-only, hybrid, onsite, visa or clearance wording. Scored down hard
      but still listed, because occasionally a company flexes for the right person.
@@ -69,6 +76,11 @@ Everything lives in `profile.json`; push a change and the next run uses it.
 - `skills.core` / `skills.differentiators` / `skills.gaps` - keywords and weights
 - `eligibility.great` / `good` / `bad` / `notMine` - phrases that decide the geography bucket
 - `eligibility.formBlocks` - application-form wording that means US-only (skips the job)
+- `eligibility.languages` - languages that, when required, rule a job out
+- `pay.targetUSD` - a stated USD salary reaching this adds to the score. Stated pay is read
+  from the posting text too ("$150,000", "$150k")
+- WeWorkRemotely and company boards drop a listing when it closes, so their old dates are
+  not penalised: a role kept open for months is still open
 - `projects` - the lead paragraph and trigger words for each of your projects
 - `resumeKeywords` - what your resume already says, used to spot missing ATS keywords
 - `thresholds` - when a pack is written, and the strong / worth-a-look cutoffs

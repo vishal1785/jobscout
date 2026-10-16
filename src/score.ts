@@ -5,7 +5,7 @@
  * India, a US-only role is a waste of an evening however good the stack match is,
  * so it is demoted hard rather than hidden (sometimes they flex for the right person).
  */
-import type { Job } from './sources.ts';
+import { isBoard, type Job } from './sources.ts';
 
 // 'india' is a job based in India: open to him whether it is remote, hybrid or
 // in an office, and listed in its own section rather than among worldwide roles
@@ -23,8 +23,20 @@ export type Scored = Job & {
 
 const has = (hay: string, needle: string) => hay.includes(needle);
 
-// words in a location field that name a way of working, not a place
-const MODE_WORDS = /\b(remote|hybrid|on-?site|in-?office|office|home[- ]based|based|fully|only|anywhere in|wfh)\b/g;
+// words in a location field that describe a way of working, not a place
+const GENERIC = /\b(remote|remotely|hybrid|on ?site|office|home ?based|based|first|fully|only|anywhere|in the world|worldwide|global|globally|distributed|flexible|wfh|work from home|time ?zones?|hours?|not stated|unknown|any|locations?|multiple|various|jobs?|position|role|team|tbd|other|the)\b/g;
+
+/**
+ * The places a location field names, with the ways of working taken out:
+ * "Time zone: CET (+/- 3 hours)" names ["cet"], "Remote" names nothing,
+ * "London, United Kingdom - Deliveroo" names three things, all of them not India.
+ */
+export function namedPlaces(location: string): string[] {
+  return location.toLowerCase()
+    .split(/[;,|/()\n]|\s-\s|\s+or\s+|\s+and\s+|:/)
+    .map((s) => s.replace(/[^a-z ]+/g, ' ').replace(GENERIC, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+}
 
 /**
  * Whether a job is in India: 'only' when every place it names is in India
@@ -37,13 +49,52 @@ export function whereInIndia(job: { title: string; location: string }, profile: 
   const places: string[] = profile.eligibility.indiaPlaces ?? ['india'];
   const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const named = (s: string) => places.some((p) => new RegExp('\\b' + escape(p) + '\\b').test(s));
-  const parts = job.location.toLowerCase()
-    .split(/[;,|/()\n]|\s-\s|\s+or\s+|\s+and\s+|:/)
-    .map((s) => s.replace(MODE_WORDS, ' ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
+  const parts = namedPlaces(job.location);
   if (!parts.length) return named(job.title.toLowerCase()) ? 'only' : null;
   const inIndia = parts.filter(named).length;
   return inIndia === 0 ? null : inIndia === parts.length ? 'only' : 'among';
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// a sentence that only wishes for the language is not a requirement
+const NICE_TO_HAVE = /\b(plus|bonus|nice to have|advantage|advantageous|preferred|optional|desirable|not required)\b/;
+
+/**
+ * A language he does not speak, required: "fluent German", "native Japanese
+ * speaker", "Mandarin is a must". Read sentence by sentence, so "English
+ * required; German is a plus" does not count.
+ */
+export function languageRequired(text: string, profile: any): string | null {
+  const langs: string[] = profile.eligibility.languages ?? [];
+  if (!langs.length) return null;
+  const L = `(${langs.map(escapeRe).join('|')})`;
+  const before = new RegExp(`\\b(fluent|fluency|native|proficien\\w*|business[- ]level|professional[- ]level|working knowledge of|written and spoken|spoken and written|verbal and written|excellent)\\b[^.]{0,40}?\\b${L}\\b`);
+  const after = new RegExp(`\\b${L}\\b[^.]{0,25}?\\b(speak\\w*|speaker|language skills|fluency|fluent|required|is a must|must|mandatory|native|proficiency|c1|c2|b2)\\b`);
+  const speaking = new RegExp(`\\b${L}[- ]speaking\\b`);
+  for (const sentence of text.split(/[.\n;!?]+/)) {
+    if (NICE_TO_HAVE.test(sentence)) continue;
+    const m = before.exec(sentence) ?? after.exec(sentence) ?? speaking.exec(sentence);
+    if (m) return langs.find((l) => new RegExp(`\\b${escapeRe(l)}\\b`).test(m[0])) ?? null;
+  }
+  return null;
+}
+
+/**
+ * "Anywhere in China" is not anywhere: whatever follows "anywhere in" decides
+ * it. APAC takes in India, a bare Asia is good but not worldwide, an Indian
+ * place is India, anything else is somewhere he cannot work from.
+ */
+function anywhereIn(s: string, profile: any): { eligibility: Eligibility; why: string } | null {
+  const m = /\banywhere (?:in|within|across) (?!the world\b)(?:the )?([a-z]+(?: [a-z]+){0,2})/.exec(s);
+  if (!m) return null;
+  const where = m[1];
+  const said = `says "anywhere in ${where}"`;
+  if (/\b(apac|asia pacific)\b/.test(where)) return { eligibility: 'worldwide', why: said };
+  if (/\basia\b/.test(where)) return { eligibility: 'friendly', why: said };
+  const places: string[] = profile.eligibility.indiaPlaces ?? ['india'];
+  if (places.some((p) => new RegExp(`\\b${escapeRe(p)}\\b`).test(where))) return { eligibility: 'india', why: said };
+  return { eligibility: 'restricted', why: said };
 }
 
 export function judgeEligibility(job: Job, profile: any): { eligibility: Eligibility; why: string } {
@@ -55,6 +106,12 @@ export function judgeEligibility(job: Job, profile: any): { eligibility: Eligibi
   // the application form outranks anything the posting says: a "Remote" job
   // whose form asks for US work authorization hires only in the US
   if (job.formBlock) return { eligibility: 'restricted', why: `application form asks: "${job.formBlock}"` };
+  // no location makes up for a language he does not speak
+  const lang = languageRequired(text, profile);
+  if (lang) return { eligibility: 'restricted', why: `requires ${lang}` };
+  // before the "anywhere" phrase below can call it worldwide
+  const scoped = anywhereIn(`${job.location}\n${job.title}`.toLowerCase(), profile);
+  if (scoped) return scoped;
 
   for (const phrase of profile.eligibility.great) {
     if (has(loc, phrase)) return { eligibility: 'worldwide', why: `location says "${phrase}"` };
@@ -64,8 +121,14 @@ export function judgeEligibility(job: Job, profile: any): { eligibility: Eligibi
   const india = whereInIndia(job, profile);
   if (india === 'only') return { eligibility: 'india', why: 'based in India' };
   if (india === 'among') return { eligibility: 'worldwide', why: 'India is among the listed places' };
-  // Asia named explicitly is as good as worldwide for him
-  if (/\basia\b|\bapac\b/.test(loc)) return { eligibility: 'worldwide', why: 'Asia named in location' };
+  // APAC among the places takes in India, so it is as good as worldwide; a bare
+  // Asia is good but not worldwide, since it often means East or Southeast Asia.
+  // The title counts only when the location names nothing: "Engineer - Asia"
+  // located in China is a job in China.
+  const places = namedPlaces(job.location);
+  const among = (re: RegExp) => (places.length ? places.some((p) => re.test(p)) : re.test(job.title.toLowerCase()));
+  if (among(/\b(apac|asia pacific)\b/)) return { eligibility: 'worldwide', why: 'APAC among the listed places' };
+  if (among(/\basia\b/)) return { eligibility: 'friendly', why: 'Asia named, which is not worldwide' };
 
   const hardBlocks = profile.eligibility.bad.filter((p: string) => has(text, p));
   const locBlocks = profile.eligibility.bad.filter((p: string) => has(loc, p));
@@ -82,17 +145,28 @@ export function judgeEligibility(job: Job, profile: any): { eligibility: Eligibi
     return { eligibility: 'restricted', why: `location is country-scoped: ${job.location}` };
   }
 
+  // any other place in the location is where the job is: London, France, EMEA,
+  // "Time zone: CET". None of them is open from India, whatever the description
+  // says about EMEA or being distributed.
+  if (places.length) return { eligibility: 'restricted', why: `located in ${job.location}` };
+  // with nothing in the location, a region in the title scopes it the same way
+  const word = (p: string) => new RegExp('\\b' + escapeRe(p.trim()) + '\\b');
+  const titled = profile.eligibility.good.find((p: string) => word(p).test(job.title.toLowerCase()));
+  if (titled) return { eligibility: 'restricted', why: `title names ${titled.trim()}` };
+
+  // "work from anywhere in the EU" in a description scopes it just the same
+  const scopedText = anywhereIn(text, profile);
+  if (scopedText) return scopedText;
+
   // a bare "global" or "anywhere" in a description usually describes the company,
   // not where it hires: only unambiguous phrases count here
   for (const phrase of profile.eligibility.greatInText ?? []) {
     if (has(text, phrase)) return { eligibility: 'worldwide', why: `description says "${phrase}"` };
   }
-  for (const phrase of profile.eligibility.good) {
-    if (has(loc, phrase)) return { eligibility: 'friendly', why: `region: ${job.location}` };
-  }
   if (hardBlocks.length) return { eligibility: 'restricted', why: `description says "${hardBlocks[0]}"` };
+  // whole words only: "facets" is not a CET time zone
   for (const phrase of profile.eligibility.good) {
-    if (has(text, phrase)) return { eligibility: 'friendly', why: `mentions ${phrase.trim()}` };
+    if (word(phrase).test(text)) return { eligibility: 'friendly', why: `mentions ${phrase.trim()}` };
   }
   return { eligibility: 'unclear', why: `location: ${job.location || 'not stated'}` };
 }
@@ -104,6 +178,25 @@ const ELIGIBILITY_FACTOR: Record<Eligibility, number> = {
   unclear: 0.6,
   restricted: 0.18,
 };
+
+/**
+ * The top of the USD pay range a posting states, in its salary field or its
+ * text: "$150,000", "$150k", or a salary field of plain numbers with no other
+ * currency. Amounts under $20k are left out, being hourly or monthly figures.
+ */
+export function statedPayUSD(job: { salary?: string; description: string }): number | null {
+  const amounts: number[] = [];
+  const text = `${job.salary ?? ''} \n ${job.description}`;
+  for (const m of text.matchAll(/\$\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?k\b|\d{5,7}\b)/gi)) {
+    const raw = m[1].toLowerCase().replace(/,/g, '');
+    amounts.push(raw.endsWith('k') ? parseFloat(raw) * 1000 : Number(raw));
+  }
+  if (job.salary && !/\b(eur|gbp|inr|cad|aud|chf|sek|nok|dkk|pln|brl|mxn|jpy|sgd)\b|[^\x00-\x7F]/i.test(job.salary)) {
+    for (const m of job.salary.matchAll(/\d{5,7}/g)) amounts.push(Number(m[0]));
+  }
+  const annual = amounts.filter((a) => a >= 20_000 && a <= 1_000_000);
+  return annual.length ? Math.max(...annual) : null;
+}
 
 export function scoreJob(job: Job, profile: any): Scored {
   const title = job.title.toLowerCase();
@@ -150,14 +243,22 @@ export function scoreJob(job: Job, profile: any): Scored {
     }
   }
 
-  // freshness: a month-old remote posting is usually gone
+  // freshness: a month-old remote posting is usually gone. Not on sources that
+  // drop a listing when it closes: there an old date means a role kept open
+  // (Sticker Mule has posted the same one since May), not a stale page.
   const ageDays = (Date.now() - new Date(job.postedAt).getTime()) / 86_400_000;
+  const liveOnly = isBoard(job.source) || job.source === 'WeWorkRemotely';
   if (ageDays <= 3) { points += 6; reasons.push('posted in the last 3 days'); }
   else if (ageDays <= 10) points += 3;
-  else if (ageDays > 45) { points -= 6; reasons.push('posting is over 45 days old'); }
+  else if (ageDays > 45 && !liveOnly) { points -= 6; reasons.push('posting is over 45 days old'); }
 
-  // salary transparency is a decent proxy for a serious, global employer
-  if (job.salary) points += 2;
+  // salary transparency is a decent proxy for a serious, global employer, and
+  // pay at or above his target is a reason to apply in its own right
+  const pay = statedPayUSD(job);
+  if (job.salary || pay) points += 2;
+  if (pay && pay >= (profile.pay?.targetUSD ?? Infinity)) {
+    points += 8; reasons.push(`pays up to $${Math.round(pay / 1000)}k`);
+  }
 
   const { eligibility, why } = judgeEligibility(job, profile);
   const raw = Math.max(0, Math.min(100, points));

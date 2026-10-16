@@ -163,7 +163,10 @@ async function main() {
   const fresh = scored.filter((s) => newIds.has(s.id) && s.score >= profile.thresholds.worthALook);
   await notify(
     buildDigest(fresh, newIds, profile, 5),
-    process.env.NTFY_TOPIC ?? secrets.ntfyTopic,
+    // in cloud mode the topic comes from the environment only: a cloud-mode test
+    // run from the laptop's repo folder once picked up secrets.json and pinged
+    // the owner's phone
+    inCloud() ? process.env.NTFY_TOPIC : process.env.NTFY_TOPIC ?? secrets.ntfyTopic,
     p('out', 'digest.txt'),
     log,
   );

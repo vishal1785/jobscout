@@ -112,9 +112,14 @@ async function himalayas(): Promise<Job[]> {
 
 /* ------------------------------------------------------- We Work Remotely */
 async function weworkremotely(): Promise<Job[]> {
+  // back-end and front-end mostly repeat the programming feed, but not
+  // entirely; devops is where the cloud and AWS roles are
   const feeds = [
     'https://weworkremotely.com/categories/remote-programming-jobs.rss',
     'https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss',
+    'https://weworkremotely.com/categories/remote-back-end-programming-jobs.rss',
+    'https://weworkremotely.com/categories/remote-front-end-programming-jobs.rss',
+    'https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss',
   ];
   const out: Job[] = [];
   for (const feed of feeds) {
@@ -141,7 +146,8 @@ async function weworkremotely(): Promise<Job[]> {
         location: stripHtml(pick('region')) || 'Remote',
         url: link,
         postedAt: pick('pubDate') ? new Date(pick('pubDate')).toISOString() : new Date().toISOString(),
-        description: stripHtml(pick('description')),
+        // the feed escapes its HTML: one pass decodes it, a second strips the tags
+        description: stripHtml(stripHtml(pick('description'))),
         tags: [],
       });
     }

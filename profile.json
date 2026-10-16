@@ -2,6 +2,9 @@
   "name": "Vishal Bhardwaj",
   "basedIn": "India",
   "timezone": "IST (UTC+5:30)",
+  "pay": {
+    "targetUSD": 80000
+  },
   "overlapNotes": "3.5-4.5h with CET, 1.5-3h with UK, little with US Pacific",
   "titles": {
     "wanted": [
@@ -251,6 +254,36 @@
       "gujarat",
       "kerala",
       "rajasthan"
+    ],
+    "languages": [
+      "german",
+      "french",
+      "spanish",
+      "portuguese",
+      "italian",
+      "dutch",
+      "polish",
+      "swedish",
+      "danish",
+      "norwegian",
+      "finnish",
+      "czech",
+      "hungarian",
+      "romanian",
+      "greek",
+      "russian",
+      "ukrainian",
+      "turkish",
+      "hebrew",
+      "arabic",
+      "japanese",
+      "mandarin",
+      "chinese",
+      "cantonese",
+      "korean",
+      "vietnamese",
+      "thai",
+      "indonesian"
     ],
     "formBlocks": [
       "authorized to work in the us",

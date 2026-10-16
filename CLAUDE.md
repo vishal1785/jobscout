@@ -32,7 +32,7 @@ work runs on Actions rather than in a Vercel function.
 |---|---|
 | `src/index.ts` | Orchestrator. Flags: `--no-fetch`, `--open` (local only) |
 | `src/sources.ts` | RemoteOK, Remotive, Himalayas, WWR (RSS), Jobicy, Working Nomads, Real Work From Anywhere (scraped home page + sitemap dates), plus Ashby/Greenhouse/Lever (incl. EU instance, `lever-eu`)/SmartRecruiters boards. SmartRecruiters lists carry no description, so only the newest 40 engineering titles get a detail fetch. `isBoard()` is the one test for "came from a company board". Per-source failures are isolated. Boards capped at newest 150. Non-http(s) URLs dropped at ingest |
-| `src/score.ts` | Eligibility first (worldwide / india / friendly / unclear / restricted, factor 1 / 1 / 0.85 / 0.6 / 0.18), then fit. `india` = every place in the location is in India (`whereInIndia`, `eligibility.indiaPlaces`), checked before blocked words so "Hyderabad (Hybrid)" passes; India among other countries = worldwide. India jobs get their own report tab with `thresholds.india` (35) and are left out of Strong/Worth. Location+title restrictions beat description wording. Gap in the title costs x2.5 |
+| `src/score.ts` | Eligibility first (worldwide / india / friendly / unclear / restricted, factor 1 / 1 / 0.85 / 0.6 / 0.18), then fit. `india` = every place in the location is in India (`whereInIndia`, `eligibility.indiaPlaces`), checked before blocked words so "Hyderabad (Hybrid)" passes; India among other countries = worldwide. India jobs get their own report tab with `thresholds.india` (35) and are left out of Strong/Worth. Any other place named in the location (`namedPlaces`: London, France, EMEA, "CET +/- 3h") = restricted, since 2026-10-16 when the owner saw Germany/London/Brazil roles in Strong; APAC/Asia among the places = worldwide; `friendly` now only comes from a bare "Asia" (APAC stays worldwide), or from the description when the location is just "Remote". Owner's rules of 2026-10-16: a required language (`languageRequired`, `eligibility.languages`; "is a plus" sentences ignored) and "anywhere in <not the world>" (`anywhereIn`) are restricted, checked before any worldwide phrase. Stated USD pay (`statedPayUSD`, field or text) >= `pay.targetUSD` adds 8. No >45-day penalty for live-only sources (boards, WWR) - Sticker Mule's evergreen WWR post was missed for that. Location+title restrictions beat description wording. Gap in the title costs x2.5 |
 | `src/direct.ts` | Finds the company's own board for promising jobs ("Apply direct"); cache keeps board identity only, never postings; no filesystem access |
 | `src/forms.ts` | Reads the application form (Greenhouse `?questions=true`, Ashby's public job-page GraphQL, Lever's apply page) of jobs >= worthALook, cap 60, no cache. A US work-authorization question sets `job.formBlock`, which scores 0 (skipped, not demoted). Ignored when scoped to US applicants or paired with a non-US question (DuckDuckGo's form) |
 | `src/tailor.ts` | Prep pack per job scoring >= thresholds.pack |
@@ -102,7 +102,10 @@ curl "http://127.0.0.1:7788/r?k=read-key"             # the report a phone would
 ```
 
 Expect exit 0, no data/, out/ or drafts/ created, and "New since last: 0" on a second run.
-Leave NTFY_TOPIC unset in tests so nothing reaches the owner's phone.
+Leave NTFY_TOPIC unset in tests so nothing reaches the owner's phone. Never run it from the
+real repo folder, and stop fake-vercel.mjs when done: on 2026-10-16 a leftover server kept
+the scratch folder busy, `rm && cd` failed, the run happened in the repo and read the
+topic from secrets.json. Cloud mode now ignores secrets.json for the topic.
 
 Public run history (repo is public): `https://api.github.com/repos/vishal1785/jobscout/actions/runs`.
 Full logs need a signed-in user; the jobs endpoint shows which step failed.
