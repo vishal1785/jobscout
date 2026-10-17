@@ -85,17 +85,23 @@ async function remotive(): Promise<Job[]> {
 }
 
 /* --------------------------------------------------------------- Himalayas */
+// Himalayas lists 120,000+ jobs, and its plain feed's newest 200 cover about
+// one day. Its search takes country=India, which returns only roles open to
+// someone in India (worldwide ones and those that list India), so a few
+// engineering searches, newest first, reach weeks back instead of hours.
+const HIMALAYAS_QUERIES = ['software engineer', 'developer', 'full stack', 'frontend', 'backend', 'react', 'tech lead', 'ai engineer'];
 async function himalayas(): Promise<Job[]> {
-  // the API pages at 20; walk a few pages rather than taking the first slice
-  const rows: any[] = [];
-  for (let offset = 0; offset < 200; offset += 20) {
-    const page = await getJson(`https://himalayas.app/jobs/api?limit=20&offset=${offset}`);
-    const batch = page.jobs ?? [];
-    rows.push(...batch);
-    if (batch.length < 20) break;
-    await new Promise((r) => setTimeout(r, 250));
+  const rows = new Map<string, any>();
+  for (const q of HIMALAYAS_QUERIES) {
+    for (let page = 1; page <= 4; page++) {
+      const data = await getJson(`https://himalayas.app/jobs/api/search?q=${encodeURIComponent(q)}&country=India&sort=recent&page=${page}`);
+      const batch = data.jobs ?? [];
+      for (const j of batch) rows.set(j.guid ?? j.applicationLink, j);
+      await new Promise((r) => setTimeout(r, 250));
+      if (batch.length < 20) break;
+    }
   }
-  return rows.map((j: any) => ({
+  return [...rows.values()].map((j: any) => ({
     id: `himalayas:${j.guid ?? j.id ?? j.applicationLink}`,
     source: 'Himalayas',
     company: j.companyName ?? 'Unknown',
@@ -205,7 +211,7 @@ async function workingnomads(): Promise<Job[]> {
 }
 
 /* ------------------------------------------------- RealWorkFromAnywhere */
-// No API: the home page is server-rendered and lists the newest ~75 roles,
+// No API: the home page is server-rendered and lists the newest ~280 roles,
 // every one of them genuinely open worldwide, which is exactly his filter.
 // The sitemap carries the posting dates, so the two are read together.
 async function realworkfromanywhere(): Promise<Job[]> {
@@ -218,7 +224,12 @@ async function realworkfromanywhere(): Promise<Job[]> {
   }
 
   const out: Job[] = [];
-  for (const card of html.matchAll(/<li><a href="\/jobs\/([^"]+)"[\s\S]*?<\/a><\/li>/g)) {
+  // the <li> gained classes in Oct 2026 and the scraper silently found nothing,
+  // so it now accepts any attributes there
+  const seen = new Set<string>();
+  for (const card of html.matchAll(/<li[^>]*><a href="\/jobs\/([^"]+)"[\s\S]*?<\/a><\/li>/g)) {
+    if (seen.has(card[1])) continue;          // the page repeats some cards in more than one list
+    seen.add(card[1]);
     const [block, slug] = [card[0], card[1]];
     const title = decode(block.match(/<h3[^>]*>([^<]+)<\/h3>/)?.[1]);
     const company = decode(block.match(/<p class="text-base truncate[^"]*"[^>]*>([^<]+)<\/p>/)?.[1])
@@ -363,7 +374,10 @@ export async function fetchBoard(w: Watch): Promise<Job[]> {
     .slice(0, BOARD_CAP);
 }
 
-export async function fetchAll(watchlist: Watch[], log = console.log): Promise<Job[]> {
+/** How each source did on a run, so a scraper that quietly breaks shows up in the report. */
+export type SourceHealth = { name: string; count: number; error?: string; board: boolean };
+
+export async function fetchAll(watchlist: Watch[], log = console.log, health: SourceHealth[] = []): Promise<Job[]> {
   const tasks: Array<[string, () => Promise<Job[]>]> = [
     ['RemoteOK', remoteok],
     ['Remotive', remotive],
@@ -377,12 +391,15 @@ export async function fetchAll(watchlist: Watch[], log = console.log): Promise<J
 
   const all: Job[] = [];
   for (const [name, run] of tasks) {
+    const board = name.includes(':');          // board tasks are named ats:company
     try {
       const jobs = await run();
       log(`  ${name}: ${jobs.length}`);
       all.push(...jobs);
+      health.push({ name, count: jobs.length, board });
     } catch (err: any) {
       log(`  ${name}: FAILED (${err.message})`);
+      health.push({ name, count: 0, error: String(err.message).slice(0, 80), board });
     }
     await new Promise((r) => setTimeout(r, 400)); // be a polite client
   }

@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { fetchAll, type Job, type Watch } from './sources.ts';
+import { fetchAll, type Job, type Watch, type SourceHealth } from './sources.ts';
 import { scoreAll, type Scored } from './score.ts';
 import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks, type BoardCache } from './direct.ts';
@@ -60,12 +60,13 @@ async function main() {
     await load(KEYS.state, statePath, { seen: {} as Record<string, string>, jobs: [] as Job[] });
 
   let jobs: Job[];
+  const health: SourceHealth[] = [];
   if (args.has('--no-fetch')) {
     jobs = state.jobs ?? [];
     log(`Using ${jobs.length} stored jobs (--no-fetch)`);
   } else {
     log('Fetching sources...');
-    jobs = await fetchAll(watchlist, log);
+    jobs = await fetchAll(watchlist, log, health);
     log(`  total after de-duplication: ${jobs.length}`);
   }
 
@@ -132,7 +133,7 @@ async function main() {
   }
 
   const reportPath = p('out', 'report.html');
-  const stats = { fetched: jobs.length, newCount: newIds.size, packs };
+  const stats = { fetched: jobs.length, newCount: newIds.size, packs, health };
   await save(KEYS.report, reportPath, buildReport(scored, newIds, profile, stats, packText, state.seen, unwatched));
 
   // forget ids not seen this run for 60 days, so the state does not only grow

@@ -35,8 +35,12 @@ To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
 1. **Collects** from RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads
    and Real Work From Anywhere, plus the company boards listed in `companies.json` (Ashby,
    Greenhouse, Lever and SmartRecruiters). All public
-   endpoints, no logins. A dead source is logged and skipped, and any board over 150 postings
-   is capped at its newest 150 so one staffing agency cannot drown the rest.
+   endpoints, no logins. A dead source is skipped, and the report says so at the top: a job
+   site returning nothing usually means it changed its page and its reader needs fixing. Any
+   board over 150 postings is capped at its newest 150 so one staffing agency cannot drown the
+   rest. Himalayas is searched for engineering roles open to India rather than read as a
+   feed, since its feed's newest 200 cover about a day; Remotive's free API gives only its
+   newest 15.
 2. **De-duplicates** on company plus title, preferring the company's own board over an
    aggregator's copy.
 3. **Judges eligibility**, the thing that matters most from India. Most "remote" jobs are
@@ -105,7 +109,7 @@ The file is public, like the rest of the repo.
 
 A tab bar at the top jumps to each section. Sections fold open and shut; the
 wrong-geography list and the check-by-hand list start folded. **Based in India** holds roles
-located in India (remote, hybrid or office), with its own lower bar, `thresholds.india` in
+located in India (remote, hybrid or office), with its own bar, `thresholds.india` in
 `profile.json`; cities and states that count are in `eligibility.indiaPlaces`. A role open in
 several countries, India among them, stays in the main lists as a worldwide role. Every time is IST. Each job shows when it was posted (a date: several sources send
 only a day) and when this tool first found it (date and time).

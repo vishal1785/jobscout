@@ -4,6 +4,7 @@
  */
 import type { Scored } from './score.ts';
 import type { Unwatched } from './companies.ts';
+import type { SourceHealth } from './sources.ts';
 import { slug } from './tailor.ts';
 import { istDate, istDateTime } from './time.ts';
 
@@ -104,6 +105,14 @@ export function buildReport(
 
   const nav = tabs.map((t) => `<a href="#${t.id}">${t.title} <b>${t.count}</b></a>`).join('');
 
+  // a job site that returns nothing has usually changed its page or its API,
+  // and the run carries on without it; say so where it will be seen. A company
+  // board with no openings is normal, so boards count only when they fail.
+  const down = ((stats.health ?? []) as SourceHealth[]).filter((h) => h.error || (!h.board && h.count === 0));
+  const warn = down.length
+    ? `<p class="warn">Nothing from ${down.map((h) => `${esc(h.name)} (${h.error ? `failed: ${esc(h.error)}` : '0 jobs'})`).join(', ')} today. If that lasts more than a day, the site has probably changed and its reader needs fixing.</p>`
+    : '';
+
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -133,6 +142,7 @@ export function buildReport(
   h2::before{content:'\\25B8';display:inline-block;width:1.4em;transition:transform .15s}
   .sec[open] h2::before{transform:rotate(90deg)}
   h2 .count{margin-left:auto}
+  .warn{margin:24px 0 0;padding:10px 14px;background:#FDF3E1;border-left:4px solid var(--warn);color:#7A3E06;font-size:13.5px}
   .times{margin:2px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--soft)}
   .hand{list-style:none;padding:0;margin:12px 0 0}
   .hand li{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
@@ -175,6 +185,7 @@ export function buildReport(
 </header>
 <nav class="tabs">${nav}</nav>
 <main>
+  ${warn}
   ${body.join('')}
 </main>
 <script>
