@@ -68,9 +68,17 @@ To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
    only in the US, so it is skipped outright, not just scored down. A question put only to
    US applicants, next to one for everyone else (DuckDuckGo does this), does not count.
 7. **Writes a prep pack** for anything scoring 60+: why you fit, which projects to lead with,
-   what to be honest about, ATS keywords you lack, and a letter skeleton with a blank marked
-   `[YOUR HOOK]`. It will not write the hook. That sentence is the whole difference between a
-   personal application and a generated one.
+   what to be honest about, ATS keywords you lack, drafted answers, and a letter. The answers
+   are for the questions the job's own form asks ("What interests you about working at
+   Ready?", "What stack are you most experienced with?"), or the usual four when the form
+   cannot be read: why us, a project you're proud of, a tough call, your best work. They are
+   templates, not AI: stitched from `stories` in `profile.json`, which hold only true facts
+   from your resume, and from what the posting says about the company. Personal fields
+   (name, salary, visa, links) are left for you. Edit the stories to change every draft.
+8. **Shortlists the day**: the top 15 picks found since yesterday, best first and at most two
+   per company, plus a top 5 for India-based roles (`picks` in `profile.json`). Every full
+   list is folded under them, and the notification lists the same picks. Each job has an
+   **Application form** button that opens the form itself, not the job description.
 
 ## Tuning
 
@@ -81,6 +89,7 @@ Everything lives in `profile.json`; push a change and the next run uses it.
 - `eligibility.great` / `good` / `bad` / `notMine` - phrases that decide the geography bucket
 - `eligibility.formBlocks` - application-form wording that means US-only (skips the job)
 - `eligibility.languages` - languages that, when required, rule a job out
+- `excludeCompanies` - companies never to show, by name (case and punctuation ignored)
 - `pay.targetUSD` - a stated USD salary reaching this adds to the score. Stated pay is read
   from the posting text too ("$150,000", "$150k")
 - WeWorkRemotely and company boards drop a listing when it closes, so their old dates are

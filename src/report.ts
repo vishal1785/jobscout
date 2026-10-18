@@ -7,6 +7,8 @@ import type { Unwatched } from './companies.ts';
 import type { SourceHealth } from './sources.ts';
 import { slug } from './tailor.ts';
 import { istDate, istDateTime } from './time.ts';
+import { todaysPicks } from './picks.ts';
+import { applyLink } from './forms.ts';
 
 const esc = (s: string) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -29,6 +31,7 @@ function card(j: Scored, isNew: boolean, packed: boolean, pack?: string, foundAt
   // would read as a precise 05:30 IST. Found is when this tool first saw it.
   const posted = istDate(j.postedAt);
   const found = foundAt ? istDateTime(foundAt) : '';
+  const form = applyLink(j);
   return `
   <article class="job ${j.eligibility}">
     <div class="top">
@@ -47,11 +50,12 @@ function card(j: Scored, isNew: boolean, packed: boolean, pack?: string, foundAt
     ${j.gaps.length ? `<p class="gaps">gaps: ${j.gaps.slice(0, 6).map(esc).join(', ')}</p>` : ''}
     <p class="why">${esc(j.eligibilityWhy)}</p>
     <p class="actions">
-      <a class="btn" href="${safeUrl(j.directUrl ?? j.url)}" target="_blank" rel="noopener">${j.directUrl ? 'Apply direct' : 'Open posting'}</a>
+      ${form ? `<a class="btn" href="${safeUrl(form)}" target="_blank" rel="noopener">Application form</a>` : ''}
+      <a class="btn${form ? ' ghost' : ''}" href="${safeUrl(j.directUrl ?? j.url)}" target="_blank" rel="noopener">${j.directUrl ? 'Company posting' : 'Open posting'}</a>
       ${j.directUrl ? `<a class="btn ghost" href="${safeUrl(j.url)}" target="_blank" rel="noopener">Listing</a>` : ''}
       ${packed && !pack ? `<a class="btn ghost" href="../drafts/${esc(slug(j))}.md">Prep pack</a>` : ''}
     </p>
-    ${pack ? `<details class="pack"><summary>Prep pack</summary><pre>${esc(pack)}</pre></details>` : ''}
+    ${pack ? `<details class="pack"><summary>Prep pack: drafted answers and letter</summary><pre>${esc(pack)}</pre></details>` : ''}
   </article>`;
 }
 
@@ -77,8 +81,7 @@ export function buildReport(
     .sort(byNewest)
     .slice(0, 15);
 
-  // each section folds away (plain <details>, no script); the long tail of
-  // wrong-geography roles starts folded so the morning read stays short
+  // each section folds away (plain <details>, no script)
   const tabs: Array<{ id: string; title: string; count: number }> = [];
   const fold = (id: string, title: string, count: number, open: boolean, body: string) => {
     tabs.push({ id, title, count });
@@ -92,11 +95,17 @@ export function buildReport(
       <p class="note">${note}</p>
       ${list.length ? list.map((j) => card(j, newIds.has(j.id), j.score >= profile.thresholds.pack, packs.get(j.id), seen[j.id])).join('') : '<p class="empty">Nothing today.</p>'}`);
 
+  // the morning read is the picks; every full list is folded under them and
+  // stays there for the days with time to spare
+  const picks = todaysPicks(jobs, seen, profile);
+
   // built in page order, so the tab bar can list them afterwards
   const body = [
-    section('strong', 'Strong matches', 'Worth an application today. Check the role is still open before writing anything.', strong),
-    section('worth', 'Worth a look', 'Decent overlap, or a gap you can answer honestly. Newest first, like every list here.', worth),
-    section('india', 'Based in India', 'Roles located in India, remote, hybrid or in an office: no visa or time-zone question. The bar is lower than for worldwide roles; the location says whether it means moving.', india),
+    section('picks', 'Today\'s top picks', 'Found since yesterday, best first, at most two per company. This is the list to act on; everything below is folded.', picks.world),
+    section('indiapicks', 'India top picks', 'The same, for roles based in India.', picks.india),
+    section('strong', 'All strong matches', 'Every strong match still open, newest first. Check the role is still open before writing anything.', strong, false),
+    section('worth', 'All worth a look', 'Decent overlap, or a gap you can answer honestly. Newest first, like every list here.', worth, false),
+    section('india', 'All based in India', 'Roles located in India, remote, hybrid or in an office: no visa or time-zone question. The location says whether it means moving.', india, false),
     section('geo', 'Good role, wrong geography', 'Scored down because the posting reads as country-restricted. Occasionally worth an email asking whether they hire from India.', restricted, false),
   ];
   if (unwatched.length) body.push(fold('hand', 'Check by hand', unwatched.length, false, `

@@ -57,6 +57,24 @@ export function formTarget(job: { id: string; source: string; url: string; direc
   return null;
 }
 
+/**
+ * The application form itself, one step past the posting: Ashby's
+ * /application page, Lever's /apply page, the form anchor on a Greenhouse
+ * posting, SmartRecruiters' apply view. Null when the job is not on one of them.
+ */
+export function applyLink(job: { url: string; directUrl?: string }): string | null {
+  for (const link of [job.directUrl, job.url]) {
+    let u: URL;
+    try { u = new URL(link ?? ''); } catch { continue; }
+    const parts = u.pathname.split('/').filter(Boolean);
+    if (u.hostname === 'jobs.ashbyhq.com' && parts.length === 2) return `${u.origin}/${parts[0]}/${parts[1]}/application`;
+    if (/^jobs(\.eu)?\.lever\.co$/.test(u.hostname) && parts.length === 2) return `${u.origin}/${parts[0]}/${parts[1]}/apply`;
+    if (/(^|\.)greenhouse\.io$/.test(u.hostname) || u.searchParams.has('gh_jid')) return `${u.origin}${u.pathname}${u.search}#app`;
+    if (u.hostname === 'jobs.smartrecruiters.com' && parts.length === 2) return `${u.origin}/${parts[0]}/${parts[1]}?oga=true`;
+  }
+  return null;
+}
+
 async function request(url: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(url, { ...init, headers: { 'user-agent': UA, ...init.headers }, signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -122,9 +140,12 @@ export async function checkForms(
   jobs: Scored[],
   profile: any,
   opts: { minScore: number; maxReads: number },
-): Promise<{ read: number; failed: number; blocked: Map<string, string> }> {
+): Promise<{ read: number; failed: number; blocked: Map<string, string>; asked: Map<string, string[]> }> {
   const phrases: string[] = profile.eligibility.formBlocks ?? [];
   const blocked = new Map<string, string>();
+  // every form's questions, kept so the prep pack can draft answers to the
+  // ones this employer actually asks
+  const asked = new Map<string, string[]>();
   let read = 0;
   let failed = 0;
   for (const job of jobs) {
@@ -138,6 +159,7 @@ export async function checkForms(
       // changed its format, and should show up as unreadable, not as clean
       const labels = await questions(target);
       if (!labels.length) throw new Error('no questions found');
+      asked.set(job.id, labels.map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean));
       const q = usAuthQuestion(labels, phrases);
       if (q) blocked.set(job.id, q);
     } catch {
@@ -145,5 +167,5 @@ export async function checkForms(
     }
     await new Promise((r) => setTimeout(r, 200));
   }
-  return { read, failed, blocked };
+  return { read, failed, blocked, asked };
 }

@@ -17,6 +17,7 @@ export type Job = {
   salary?: string;
   directUrl?: string;    // the company's own posting, when we can find it
   formBlock?: string;    // a question on its application form that rules him out
+  formQuestions?: string[]; // every question its application form asks, when it could be read
 };
 
 const UA = 'jobscout/1.0 (personal job search; contact vishal1785@gmail.com)';
@@ -46,10 +47,18 @@ export function stripHtml(html: string): string {
 }
 
 /* ---------------------------------------------------------------- RemoteOK */
+// The plain API returns only the newest ~100 jobs across every category. Each
+// tag returns its own newest 100, so a few engineering tags reach ~500 unique
+// jobs, weeks deeper. ("fullstack" and "frontend" return nothing there.)
+const REMOTEOK_TAGS = ['', 'dev', 'engineer', 'javascript', 'react', 'typescript', 'python', 'node', 'backend', 'senior', 'aws'];
 async function remoteok(): Promise<Job[]> {
-  const rows = await getJson('https://remoteok.com/api');
-  return rows
-    .filter((r: any) => r && r.id && r.position)
+  const byId = new Map<string, any>();
+  for (const tag of REMOTEOK_TAGS) {
+    const rows = await getJson(`https://remoteok.com/api${tag ? `?tag=${tag}` : ''}`);
+    for (const r of rows ?? []) if (r?.id && r?.position) byId.set(String(r.id), r);
+    await new Promise((res) => setTimeout(res, 800));      // their API asks for a gentle pace
+  }
+  return [...byId.values()]
     .map((r: any) => ({
       id: `remoteok:${r.id}`,
       source: 'RemoteOK',

@@ -1,14 +1,16 @@
 /**
  * Per-job preparation pack.
  *
- * Deliberately NOT a finished cover letter. It gives the facts worth leading
- * with, the keywords an ATS will look for, the gaps to be honest about, and a
- * skeleton with a blank where your own reason for wanting this job goes.
- * A letter that reads as generated gets binned; one specific sentence from you
- * is worth more than three polished paragraphs from a machine.
+ * The facts worth leading with, the keywords an ATS will look for, the gaps to
+ * be honest about, drafted answers to the form's own questions, and a letter.
+ * Until Oct 2026 the letter's opening was a deliberate blank for him to write;
+ * he asked for it drafted instead, so it is now stitched from templates and
+ * true stories (see answers.ts). Nothing is invented and nothing is submitted.
  */
-import type { Scored } from './score.ts';
+import { hasWord, type Scored } from './score.ts';
 import { istDate, istDateTime } from './time.ts';
+import { draft, draftAnswers, whyOpening, gapLine } from './answers.ts';
+import { applyLink } from './forms.ts';
 
 export function buildPack(job: Scored, profile: any): string {
   const text = `${job.title} \n ${job.tags.join(' ')} \n ${job.description}`.toLowerCase();
@@ -18,7 +20,7 @@ export function buildPack(job: Scored, profile: any): string {
     .map(([key, p]) => ({
       key,
       lead: p.lead,
-      hits: p.signals.filter((s: string) => text.includes(s)),
+      hits: p.signals.filter((s: string) => hasWord(text, s)),
     }))
     .sort((a, b) => b.hits.length - a.hits.length)
     .filter((p, i) => p.hits.length > 0 || i < 2)
@@ -31,16 +33,22 @@ export function buildPack(job: Scored, profile: any): string {
   const missing = (profile.skills.core ? Object.keys(profile.skills.core) : [])
     .concat(Object.keys(profile.skills.differentiators))
     .concat(['kubernetes', 'graphql', 'microservices', 'ci/cd', 'rest', 'websockets', 'redis', 'mongodb', 'figma', 'accessibility', 'testing', 'playwright', 'jest', 'vitest'])
-    .filter((kw) => text.includes(kw))
+    .filter((kw) => hasWord(text, kw))
     .filter((kw) => !profile.resumeKeywords.some((r: string) => r.includes(kw) || kw.includes(r)));
 
   const date = istDateTime(Date.now());
   const salary = job.salary ? `\n- **Salary stated:** ${job.salary}` : '';
+  const form = applyLink(job);
+  const answers = draftAnswers(job, profile);
+  const why = whyOpening(job, profile);
+  const proof = draft('proud', job, profile);
+  const gap = gapLine(job);
 
   return `# ${job.company} - ${job.title}
 
 - **Link:** ${job.url}${job.directUrl ? `
-- **Apply direct:** ${job.directUrl}` : ''}
+- **Apply direct:** ${job.directUrl}` : ''}${form ? `
+- **Application form:** ${form}` : ''}
 - **Source:** ${job.source}
 - **Location:** ${job.location}
 - **Eligibility:** ${job.eligibility} (${job.eligibilityWhy})
@@ -63,30 +71,28 @@ ${missing.length ? missing.map((k) => `- ${k}`).join('\n') : '- None worth addin
 > Only add a keyword if it is genuinely true of your experience. A keyword you
 > cannot defend in an interview costs more than it gains.
 
-## Letter skeleton
+## Drafted answers
+${job.formQuestions?.length ? '_The questions below are the ones this form asks._' : '_The form could not be read, so these are the four questions most forms ask in some wording._'}
+
+${answers.map((a) => `**${a.question}**\n\n${a.answer}`).join('\n\n')}
+
+## Letter
 
 Dear ${job.company} team,
 
-I'm applying for the ${job.title} role. **[YOUR HOOK: one or two sentences, in your own
-words, on why this company. Something specific - their product, their customers, a
-decision they have made. If you cannot write this honestly, skip the application.]**
+I'm applying for the ${job.title} role. ${why}
 
-I'm a full-stack engineer with 15+ years of experience, currently team lead at Kynetec
-Data Services, working across React and TypeScript, Python services and AWS data platforms.
+${profile.stories?.intro ?? ''}
 
-**[PROOF: pick one project above and tell it as a story - what the problem was, what you
-decided, what happened.]**
-
-**[GAP, if any: one sentence, plainly.]**
-
-I work remotely from India with teams and clients across the US and UK, so async,
-written-first collaboration is how I already operate.
+${proof}
+${gap ? `\n${gap}\n` : ''}
+${profile.stories?.remote ?? ''}
 
 Best regards,
 Vishal Bhardwaj
 
 ## Before you send
-- [ ] Hook written in your own words, specific to them
+- [ ] Read the drafts once: every fact must be true of you, and the opening must make sense for this company
 - [ ] Checked the role is still open on their own careers page
 - [ ] Checked whether they hire from India (eligibility above is a guess from the text)
 - [ ] Resume PDF attached, resume.txt used for any paste-as-text field

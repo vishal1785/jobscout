@@ -19,6 +19,7 @@ import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks, type BoardCache } from './direct.ts';
 import { checkForms } from './forms.ts';
 import { readCompanies, resolveCompanies } from './companies.ts';
+import { todaysPicks } from './picks.ts';
 import { buildReport } from './report.ts';
 import { buildDigest, notify } from './notify.ts';
 import { inCloud, assertCloudConfig, load, save, KEYS } from './store.ts';
@@ -68,6 +69,9 @@ async function main() {
     log('Fetching sources...');
     jobs = await fetchAll(watchlist, log, health);
     log(`  total after de-duplication: ${jobs.length}`);
+    // every source failing means the network is down, not that the world has no
+    // jobs: stop before an empty report replaces yesterday's good one
+    if (!jobs.length) throw new Error('every source failed - the last report is left in place');
   }
 
   const newIds = new Set<string>();
@@ -108,10 +112,12 @@ async function main() {
     const forms = await checkForms(scored, profile, { minScore: profile.thresholds.worthALook, maxReads: 60 });
     log(`  read: ${forms.read}, unreadable: ${forms.failed}, skipped for US work authorization: ${forms.blocked.size}`);
     for (const j of jobs) {
+      j.formQuestions = forms.asked.get(j.id) ?? j.formQuestions;
       const q = forms.blocked.get(j.id);
       if (q) { j.formBlock = q; detail(`    ${j.company} - ${j.title}: "${q}"`); }
     }
     if (forms.blocked.size) scored = scoreAll(jobs, profile);
+    else for (const s of scored) s.formQuestions = forms.asked.get(s.id) ?? s.formQuestions;
   }
 
   // prep packs for anything above the threshold. In the cloud there is no
@@ -161,7 +167,10 @@ async function main() {
   // only what is new and good enough: a daily ping about the same jobs is one
   // you learn to ignore
   log('Notification   :');
-  const fresh = scored.filter((s) => newIds.has(s.id) && s.score >= profile.thresholds.worthALook);
+  // the picks found by this run: the backup run finds none and stays quiet
+  const picks = todaysPicks(scored, state.seen, profile);
+  const fresh = [...picks.world, ...picks.india].filter((s) => newIds.has(s.id));
+  log(`  top picks: ${picks.world.length} + ${picks.india.length} India, ${fresh.length} new this run`);
   await notify(
     buildDigest(fresh, newIds, profile, 5),
     // in cloud mode the topic comes from the environment only: a cloud-mode test

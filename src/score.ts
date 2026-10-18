@@ -21,7 +21,23 @@ export type Scored = Job & {
   reasons: string[];
 };
 
-const has = (hay: string, needle: string) => hay.includes(needle);
+// Whole words only, with an optional plural: a keyword inside a longer word is
+// not a match. Plain substring matching scored every JavaScript job down for
+// "java", every scalable system for "scala", every AI job with guardrails for
+// "rails", found "rag" in storage and leverage, and rejected "Internal Tools
+// Engineer" for "intern" and "usability" as "usa".
+const wordCache = new Map<string, RegExp>();
+export function hasWord(text: string, keyword: string): boolean {
+  const k = keyword.trim().toLowerCase();
+  if (!k) return false;
+  let re = wordCache.get(k);
+  if (!re) {
+    re = new RegExp(`(?<![a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?(?![a-z0-9])`);
+    wordCache.set(k, re);
+  }
+  return re.test(text);
+}
+const has = hasWord;
 
 // words in a location field that describe a way of working, not a place
 const GENERIC = /\b(remote|remotely|hybrid|on ?site|office|home ?based|based|first|fully|only|anywhere|in the world|worldwide|global|globally|distributed|flexible|wfh|work from home|time ?zones?|hours?|not stated|unknown|any|locations?|multiple|various|jobs?|position|role|team|tbd|other|the)\b/g;
@@ -206,15 +222,20 @@ export function scoreJob(job: Job, profile: any): Scored {
   const gaps: string[] = [];
 
   // hard rejects on title
-  const rejected = profile.titles.reject.find((r: string) => title.includes(r));
+  const rejected = profile.titles.reject.find((r: string) => has(title, r));
+  // companies he has ruled out by name ("Lemon.io": India is never among the
+  // countries it hires in, however its listings word the location). Compared
+  // without case or punctuation, so "Lemon.io" and "lemon io" are one company.
+  const bare = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const excluded = (profile.excludeCompanies ?? []).find((c: string) => bare(c) === bare(job.company));
 
   let points = 0;
 
   // is this even an engineering role he'd want
-  const titleHit = profile.titles.wanted.some((t: string) => title.includes(t));
+  const titleHit = profile.titles.wanted.some((t: string) => has(title, t));
   if (titleHit) { points += 12; reasons.push('engineering title'); }
 
-  const seniority = profile.titles.seniorityBonus.find((s: string) => title.includes(s));
+  const seniority = profile.titles.seniorityBonus.find((s: string) => has(title, s));
   if (seniority) { points += 10; reasons.push(`seniority: ${seniority}`); }
 
   // junior-level asks are a mismatch for 19 years
@@ -225,20 +246,20 @@ export function scoreJob(job: Job, profile: any): Scored {
 
   // stack match
   for (const [kw, weight] of Object.entries<number>(profile.skills.core)) {
-    if (text.includes(kw)) { points += weight; matched.push(kw); }
+    if (has(text, kw)) { points += weight; matched.push(kw); }
   }
   for (const [kw, weight] of Object.entries<number>(profile.skills.differentiators)) {
-    if (text.includes(kw)) { points += weight; matched.push(kw); }
+    if (has(text, kw)) { points += weight; matched.push(kw); }
   }
   // gaps: penalise only when the gap looks central (title or first part of the text)
   const head = `${title} \n ${job.description.slice(0, 600).toLowerCase()}`;
   for (const [kw, weight] of Object.entries<number>(profile.skills.gaps)) {
-    if (text.includes(kw)) {
+    if (has(text, kw)) {
       gaps.push(kw);
       // in the title the gap IS the job ("Full Stack Java Engineer"); early in the
       // description it is a core requirement; further down it is a nice-to-have
-      if (title.includes(kw)) points -= weight * 2.5;
-      else if (head.includes(kw)) points -= weight;
+      if (has(title, kw)) points -= weight * 2.5;
+      else if (has(head, kw)) points -= weight;
       else points -= Math.ceil(weight / 3);
     }
   }
@@ -264,9 +285,10 @@ export function scoreJob(job: Job, profile: any): Scored {
   const raw = Math.max(0, Math.min(100, points));
   // a US work-authorization question on the form is skipped, not demoted:
   // there is no flexing on that one
-  const score = rejected || job.formBlock ? 0 : Math.round(raw * ELIGIBILITY_FACTOR[eligibility]);
+  const score = rejected || excluded || job.formBlock ? 0 : Math.round(raw * ELIGIBILITY_FACTOR[eligibility]);
 
   if (rejected) reasons.unshift(`rejected: title contains "${rejected}"`);
+  else if (excluded) reasons.unshift(`skipped: ${excluded} is in excludeCompanies`);
   else if (job.formBlock) reasons.unshift('skipped: the application form asks for US work authorization');
   reasons.push(`eligibility: ${eligibility} (${why})`);
 

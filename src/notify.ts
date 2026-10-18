@@ -55,19 +55,16 @@ const safeField = (s: string, max = 90) =>
     .slice(0, max);
 
 /** A digest that reads like a note from someone who looked, not a dump. */
+// jobs arrive as today's picks, already short-listed; the best come first,
+// the same order as the top of the report
 export function buildDigest(jobs: Scored[], newIds: Set<string>, profile: any, max = 5): string {
-  const byNewest = (a: Scored, b: Scored) => +new Date(b.postedAt) - +new Date(a.postedAt);
-  const strong = jobs.filter((j) => j.score >= profile.thresholds.strong).sort(byNewest);
-  const worth = jobs
-    .filter((j) => j.score >= profile.thresholds.worthALook && j.score < profile.thresholds.strong)
-    .sort(byNewest);
-
-  const pick = [...strong, ...worth].slice(0, max);
+  const ranked = [...jobs].sort((a, b) => b.score - a.score);
+  const pick = ranked.slice(0, max);
   if (!pick.length) return '';
 
-  const freshCount = pick.filter((j) => newIds.has(j.id)).length;
+  const strong = ranked.filter((j) => j.score >= profile.thresholds.strong).length;
   const lines = [
-    `${strong.length} strong, ${worth.length} worth a look${freshCount ? `, ${freshCount} new` : ''}`,
+    `${ranked.length} new top pick${ranked.length === 1 ? '' : 's'} today${strong ? `, ${strong} strong` : ''}`,
     '',
   ];
   for (const j of pick) {
