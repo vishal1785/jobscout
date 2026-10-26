@@ -32,8 +32,8 @@ To run it now instead of waiting: Actions tab -> **scout** -> **Run workflow**.
 
 ## What it does
 
-1. **Collects** from RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads
-   and Real Work From Anywhere, plus the company boards listed in `companies.json` (Ashby,
+1. **Collects** from RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads,
+   Real Work From Anywhere and Hacker News' monthly "Who is hiring?" thread, plus the company boards listed in `companies.json` (Ashby,
    Greenhouse, Lever and SmartRecruiters). All public
    endpoints, no logins. A dead source is skipped, and the report says so at the top: a job
    site returning nothing usually means it changed its page and its reader needs fixing. Any

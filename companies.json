@@ -20,6 +20,8 @@
     { "name": "Wise", "board": "smartrecruiters:Wise" },
     { "name": "Deliveroo", "board": "greenhouse:deliveroo" },
     { "name": "Monzo", "board": "greenhouse:monzo" },
+    { "name": "Ashby", "board": "ashby:ashby" },
+    { "name": "Hotjar (Contentsquare)", "board": "lever:contentsquare" },
     { "name": "Cold Labs", "careers": "https://coldlabs.ai/careers" },
     { "name": "Google DeepMind", "careers": "https://deepmind.google/about/careers/" },
     { "name": "Revolut", "careers": "https://www.revolut.com/careers/" }

@@ -208,7 +208,7 @@ export function buildReport(
   openTarget();
 </script>
 <footer>
-  Sources: RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads, Real Work From Anywhere,
+  Sources: RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads, Real Work From Anywhere, Hacker News Who is hiring,
   and company boards on Ashby, Greenhouse, Lever and SmartRecruiters. Times are IST.
   Eligibility is guessed from the wording of each posting and is sometimes wrong - always verify before applying.
   Nothing here is submitted automatically: every application stays yours to write and send.

@@ -170,6 +170,81 @@ async function weworkremotely(): Promise<Job[]> {
   return out;
 }
 
+/* ------------------------------------------------- Hacker News: Who is hiring?
+ * A monthly thread where companies, often founders, post their own roles. Free
+ * and keyless through HN's Algolia API: one request returns the whole thread.
+ * Most posts open with "Company | Role | Location | Type | Salary | link";
+ * some use "Company:" and "Location:" lines instead. Posts with neither shape
+ * are skipped rather than guessed at.
+ */
+const decodeEntities = (s: string) => s
+  .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCharCode(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(Number(d)));
+
+const LOCATION_PART = /\b(remote|onsite|on-site|in-office|office|hybrid|worldwide|anywhere|global|relocation|timezone|time zone|utc|gmt|est|pst|cet)\b|,\s*[A-Z]{2}\b|\b(london|berlin|new york|nyc|sf|san francisco|bay area|india|europe|eu|uk|us|usa|canada|germany|toronto|amsterdam|paris|singapore|sydney|bangalore|bengaluru|pune|apac|emea|latam)\b/i;
+const ROLE_PART = /engineer|developer|architect|lead|cto|full[- ]?stack|front[- ]?end|back[- ]?end|scientist|sre|devops|programmer|founding/i;
+// fields are split on "|", or on em and en dashes, which some posts use
+// instead; built from char codes so the source stays ASCII
+const HN_SEP = new RegExp(`\\s*(?:\\||\\s${String.fromCharCode(0x2014)}\\s|\\s${String.fromCharCode(0x2013)}\\s)\\s*`);
+
+export function parseHnPost(html: string): { company: string; title: string; location: string; link?: string; text: string } | null {
+  // the post's first link that leaves HN is usually its careers page or the role itself
+  const links = [...html.matchAll(/href="([^"]+)"/g)].map((m) => decodeEntities(m[1].replace(/&amp;/g, '&')))
+    .filter((u) => /^https?:\/\//i.test(u) && !/news\.ycombinator\.com/i.test(u));
+  const ats = links.find((u) => /ashbyhq|greenhouse|lever\.co|smartrecruiters|workable|recruitee|teamtailor/i.test(u));
+  const text = decodeEntities(stripHtml(html.replace(/<p>/g, '\n')));
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+
+  const field = (name: RegExp) => lines.slice(0, 8).map((l) => name.exec(l)?.[1]?.trim()).find(Boolean);
+  const keyed = { company: field(/^company\s*:\s*(.+)$/i), title: field(/^(?:role|position|title|job)s?\s*:\s*(.+)$/i), location: field(/^location\s*:\s*(.+)$/i) };
+
+  const parts = lines[0].split(HN_SEP).map((s) => s.trim()).filter(Boolean);
+  let company = keyed.company;
+  let title = keyed.title;
+  let location = keyed.location;
+  if (parts.length >= 2) {
+    company ??= parts[0];
+    title ??= parts.slice(1).find((s) => ROLE_PART.test(s) && !LOCATION_PART.test(s)) ?? parts.slice(1).find((s) => ROLE_PART.test(s));
+    location ??= parts.slice(1).filter((s) => s !== title && LOCATION_PART.test(s) && !/^https?:/i.test(s)).join('; ');
+  }
+  if (!company || !title) return null;
+  // "Snout https://snout.com/" and "Smarkets ( https://... )": the name only
+  company = company.replace(/\(?\s*https?:\/\/\S+\s*\)?/g, '').trim() || company;
+  return { company: company.slice(0, 80), title: title.slice(0, 140), location: location || 'Not stated', link: ats ?? links[0], text };
+}
+
+async function hackernews(): Promise<Job[]> {
+  const threads = (await getJson('https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10')).hits
+    .filter((h: any) => /who is hiring/i.test(h.title))
+    .slice(0, 2);
+  if (!threads.length) return [];
+  // early in a month the new thread is still filling up, so read last month's too
+  const fresh = Date.now() - Date.parse(threads[0].created_at) < 10 * 86_400_000;
+  const out: Job[] = [];
+  for (const t of fresh ? threads : threads.slice(0, 1)) {
+    const item = await getJson(`https://hn.algolia.com/api/v1/items/${t.objectID}`);
+    for (const c of item.children ?? []) {
+      if (!c?.text) continue;
+      const post = parseHnPost(c.text);
+      if (!post) continue;
+      out.push({
+        id: `hn:${c.id}`,
+        source: 'HackerNews',
+        company: post.company,
+        title: post.title,
+        location: post.location,
+        url: `https://news.ycombinator.com/item?id=${c.id}`,
+        directUrl: post.link,
+        postedAt: c.created_at ?? new Date().toISOString(),
+        description: post.text,
+        tags: [],
+      });
+    }
+  }
+  return out;
+}
+
 /* ----------------------------------------------------------------- Jobicy */
 async function jobicy(): Promise<Job[]> {
   const out: Job[] = [];
@@ -395,6 +470,7 @@ export async function fetchAll(watchlist: Watch[], log = console.log, health: So
     ['Jobicy', jobicy],
     ['WorkingNomads', workingnomads],
     ['RealWorkFromAnywhere', realworkfromanywhere],
+    ['HackerNews', hackernews],
     ...watchlist.map((w): [string, () => Promise<Job[]>] => [`${w.ats}:${w.label ?? w.token}`, () => fetchBoard(w)]),
   ];
 

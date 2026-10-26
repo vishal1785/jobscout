@@ -40,7 +40,8 @@ export function hasWord(text: string, keyword: string): boolean {
 const has = hasWord;
 
 // words in a location field that describe a way of working, not a place
-const GENERIC = /\b(remote|remotely|hybrid|on ?site|office|home ?based|based|first|fully|only|anywhere|in the world|worldwide|global|globally|distributed|flexible|wfh|work from home|time ?zones?|hours?|not stated|unknown|any|locations?|multiple|various|jobs?|position|role|team|tbd|other|the)\b/g;
+// (employment terms too: HN's "Full Time, Remote India" names one place, not two)
+const GENERIC = /\b(remote|remotely|hybrid|on ?site|office|home ?based|based|first|fully|only|anywhere|in the world|worldwide|global|globally|distributed|flexible|wfh|work from home|time ?zones?|hours?|not stated|unknown|any|locations?|multiple|various|jobs?|position|role|team|tbd|other|the|full ?time|part ?time|contract|contractor|permanent|freelance)\b/g;
 
 /**
  * The places a location field names, with the ways of working taken out:
