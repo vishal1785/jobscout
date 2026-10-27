@@ -46,7 +46,7 @@ work runs on Actions rather than in a Vercel function.
 | `src/store.ts` | Local mode: files in data/, out/. Cloud mode (`CI` set): `/api/store` with `Authorization: Bearer PUBLISH_KEY`. `assertCloudConfig` fails fast naming a missing secret |
 | `api/report.js`, `api/store.js`, `api/kick.js` | The Vercel functions (plain JS, ESM) |
 | `profile.json` | All tuning: titles, skill weights, gaps, eligibility phrases, projects, thresholds. The owner edits this |
-| `companies.json` | The owner's list of companies to watch (public; the owner chose that). Name only -> board looked up each run; `board: "ats:token"` pins it; `careers` -> "Check by hand" in the report. Replaced watchlist.json. Discovered boards still live in Redis (`jobscout:watchlist`) |
+| `companies.json` | The owner's list of companies to watch (public; the owner chose that). On 2026-10-27 it gained 108 boards from the Work Wanderers "221 fully-remote companies" PDF (the owner chose public despite its no-redistribution notice): each careers page was scanned for its ATS link, else the name probed, and name-probed boards were checked for identity - "Remote" (General Assembly), "Crisp" (a Dutch grocer) and "Ghost" (AI hardware) were wrong and dropped; "Plane" is plane.so. ~92 had no readable board and 8 use Workable/Breezy, which jobscout cannot read yet. Name only -> board looked up each run; `board: "ats:token"` pins it; `careers` -> "Check by hand" in the report. Replaced watchlist.json. Discovered boards still live in Redis (`jobscout:watchlist`) |
 | `src/companies.ts` | Resolves companies.json to boards. `node src/companies.ts` prints each entry's board, job count and two sample titles, to catch a slug that belongs to another company ("wise" on Greenhouse is not Wise) |
 | `src/time.ts` | IST formatting (`Asia/Kolkata`, set explicitly since Actions runs in UTC). Report: posted = date only, found (first seen, from `state.seen`) = date and time |
 | `test/fake-vercel.mjs` | Local stand-in for Vercel + Upstash; see Testing |
@@ -69,7 +69,9 @@ Store keys: `jobscout:state` (seen ids), `jobscout:report`, `jobscout:watchlist`
 - No generated data in git: data/, out/, drafts/, secrets.json are gitignored. Never commit them,
   even to "fix" CI.
 - Actions logs are public: in cloud mode print counts only, never a company, score, link, topic
-  or key. `detail()` in index.ts and `redact()` in notify.ts exist for this.
+  or key. `detail()` in index.ts and `redact()` in notify.ts exist for this, and fetchAll sums
+  company boards into one line in the cloud (until 2026-10-27 it printed each board's name,
+  discovered ones included). A full run with ~120 boards takes ~5 minutes of the 15 allowed.
 - Discovered company boards are a record of where the owner applies: keep them out of git.
 - The workflow has `permissions: contents: read` and must not write back to the repo.
 

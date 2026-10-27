@@ -474,19 +474,26 @@ export async function fetchAll(watchlist: Watch[], log = console.log, health: So
     ...watchlist.map((w): [string, () => Promise<Job[]>] => [`${w.ats}:${w.label ?? w.token}`, () => fetchBoard(w)]),
   ];
 
+  // Actions logs are public: a board's name says where he is looking, so in the
+  // cloud boards are summed into one line and only the job sites are named
+  const quiet = Boolean(process.env.CI);
   const all: Job[] = [];
   for (const [name, run] of tasks) {
     const board = name.includes(':');          // board tasks are named ats:company
     try {
       const jobs = await run();
-      log(`  ${name}: ${jobs.length}`);
+      if (!(quiet && board)) log(`  ${name}: ${jobs.length}`);
       all.push(...jobs);
       health.push({ name, count: jobs.length, board });
     } catch (err: any) {
-      log(`  ${name}: FAILED (${err.message})`);
+      if (!(quiet && board)) log(`  ${name}: FAILED (${err.message})`);
       health.push({ name, count: 0, error: String(err.message).slice(0, 80), board });
     }
     await new Promise((r) => setTimeout(r, 400)); // be a polite client
+  }
+  if (quiet) {
+    const boards = health.filter((h) => h.board);
+    log(`  company boards: ${boards.length} read, ${boards.filter((h) => h.error).length} failed, ${boards.reduce((n, h) => n + h.count, 0)} jobs`);
   }
 
   // links come from third parties, one of them scraped: anything that is not a
