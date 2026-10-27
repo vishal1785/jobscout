@@ -116,6 +116,12 @@ The file is public, like the rest of the repo.
 
 ## The report
 
+Every job has **Applied** and **Not interested** buttons. A tap hides it at once and saves the
+mark, so it never appears again: not in the picks, the lists, the prep packs or the morning
+notification, and not when another job site lists the same role (marks match on company and
+title). Marked jobs sit in a folded **Applied & hidden** section with an Undo. The buttons
+work on the hosted report; the report link's key may add or remove marks and nothing else.
+
 A tab bar at the top jumps to each section. Sections fold open and shut; the
 wrong-geography list and the check-by-hand list start folded. **Based in India** holds roles
 located in India (remote, hybrid or office), with its own bar, `thresholds.india` in

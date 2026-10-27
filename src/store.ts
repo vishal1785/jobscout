@@ -58,6 +58,25 @@ export async function load<T>(key: string, file: string, fallback: T): Promise<T
   }
 }
 
+export type Marks = Record<string, { status: 'applied' | 'dismissed'; at: string }>;
+
+/**
+ * His "applied" / "not interested" marks, keyed by jobKey: from /api/triage in
+ * the cloud (a Redis hash the report page writes to), from a file locally. If
+ * they cannot be read the run carries on with nothing hidden, rather than fail.
+ */
+export async function loadMarks(file: string): Promise<Marks> {
+  if (!inCloud()) return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Marks) : {};
+  try {
+    const res = await fetch(`${site}/api/triage`, { headers: { authorization: `Bearer ${publishKey}` } });
+    if (!res.ok) throw new Error(`http ${res.status}`);
+    return ((await res.json()).result ?? {}) as Marks;
+  } catch (err: any) {
+    console.log(`  could not read your marks (${err.message}) - nothing hidden this run`);
+    return {};
+  }
+}
+
 /** Write to the store in the cloud, to a file locally. */
 export async function save(key: string, file: string, value: string): Promise<void> {
   if (inCloud()) {

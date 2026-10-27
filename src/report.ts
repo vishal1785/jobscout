@@ -4,7 +4,7 @@
  */
 import type { Scored } from './score.ts';
 import type { Unwatched } from './companies.ts';
-import type { SourceHealth } from './sources.ts';
+import { jobKey, type SourceHealth } from './sources.ts';
 import { slug } from './tailor.ts';
 import { istDate, istDateTime } from './time.ts';
 import { todaysPicks } from './picks.ts';
@@ -33,7 +33,7 @@ function card(j: Scored, isNew: boolean, packed: boolean, pack?: string, foundAt
   const found = foundAt ? istDateTime(foundAt) : '';
   const form = applyLink(j);
   return `
-  <article class="job ${j.eligibility}">
+  <article class="job ${j.eligibility}" data-key="${esc(jobKey(j))}">
     <div class="top">
       <div>
         <h3>${esc(j.title)} ${isNew ? '<span class="new">new</span>' : ''}</h3>
@@ -54,6 +54,10 @@ function card(j: Scored, isNew: boolean, packed: boolean, pack?: string, foundAt
       <a class="btn${form ? ' ghost' : ''}" href="${safeUrl(j.directUrl ?? j.url)}" target="_blank" rel="noopener">${j.directUrl ? 'Company posting' : 'Open posting'}</a>
       ${j.directUrl ? `<a class="btn ghost" href="${safeUrl(j.url)}" target="_blank" rel="noopener">Listing</a>` : ''}
       ${packed && !pack ? `<a class="btn ghost" href="../drafts/${esc(slug(j))}.md">Prep pack</a>` : ''}
+      <span class="marks">
+        <button type="button" class="mark" data-status="applied">Applied</button>
+        <button type="button" class="mark" data-status="dismissed">Not interested</button>
+      </span>
     </p>
     ${pack ? `<details class="pack"><summary>Prep pack: drafted answers and letter</summary><pre>${esc(pack)}</pre></details>` : ''}
   </article>`;
@@ -67,6 +71,7 @@ export function buildReport(
   packs: Map<string, string> = new Map(),
   seen: Record<string, string> = {},
   unwatched: Unwatched[] = [],
+  marked: Array<{ job: Scored; status: string; at: string }> = [],
 ): string {
   // jobs based in India get their own tab, with a lower bar: an office or hybrid
   // role in India is open to him in a way most "remote" roles are not
@@ -108,6 +113,13 @@ export function buildReport(
     section('india', 'All based in India', 'Roles located in India, remote, hybrid or in an office: no visa or time-zone question. The location says whether it means moving.', india, false),
     section('geo', 'Good role, wrong geography', 'Scored down because the posting reads as country-restricted. Occasionally worth an email asking whether they hire from India.', restricted, false),
   ];
+  // what he has marked, newest first, so a wrong tap can be undone from here
+  if (marked.length) body.push(fold('marked', 'Applied &amp; hidden', marked.length, false, `
+      <p class="note">Jobs you marked. They stay out of every list and notification; Undo brings one back from the next run.</p>
+      <ul class="hand">${[...marked].sort((a, b) => b.at.localeCompare(a.at)).map((m) => `<li data-key="${esc(jobKey(m.job))}">
+        <a href="${safeUrl(m.job.directUrl ?? m.job.url)}" target="_blank" rel="noopener">${esc(m.job.title)}</a>
+        <span>${esc(m.job.company)} &middot; ${m.status === 'applied' ? 'applied' : 'not interested'} ${esc(istDate(m.at))}</span>
+        <button type="button" class="mark" data-status="undo">Undo</button></li>`).join('')}</ul>`));
   if (unwatched.length) body.push(fold('hand', 'Check by hand', unwatched.length, false, `
       <p class="note">Companies in companies.json whose jobs cannot be fetched. Worth a look at their own careers page now and then.</p>
       <ul class="hand">${unwatched.map((u) => `<li>${safeUrl(u.careers) ? `<a href="${safeUrl(u.careers)}" target="_blank" rel="noopener">${esc(u.name)}</a>` : esc(u.name)} <span>${esc(u.why)}</span></li>`).join('')}</ul>`));
@@ -181,6 +193,19 @@ export function buildReport(
   .btn{font-family:var(--mono);font-size:12px;text-decoration:none;padding:7px 12px;background:var(--rail);color:#E4F0EC}
   .btn.ghost{background:transparent;color:var(--rail);border:1px solid var(--line)}
   .btn:hover{background:#134A40;color:#fff}
+  .actions{flex-wrap:wrap}
+  .marks{margin-left:auto;display:flex;gap:6px}
+  .mark{font-family:var(--mono);font-size:11.5px;padding:6px 10px;background:#fff;color:var(--soft);
+        border:1px solid var(--line);cursor:pointer}
+  .mark:hover{color:var(--rail);border-color:var(--rail)}
+  .mark:disabled{opacity:.5;cursor:wait}
+  .job.gone{display:none}
+  .hand li.restored{opacity:.5}
+  .hand li .mark{margin-left:8px}
+  #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--rail);color:#E4F0EC;
+         font-family:var(--mono);font-size:12.5px;padding:10px 14px;display:none;z-index:10;max-width:calc(100% - 32px)}
+  #toast.show{display:block}
+  #toast .mark{margin-left:8px;background:transparent;color:#E4F0EC;border-color:#5FCBA8}
   .pack{margin:12px 0 0;border-top:1px solid var(--line);padding-top:10px}
   .pack summary{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--rail);cursor:pointer}
   .pack pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:1.5;background:#fff;
@@ -197,6 +222,7 @@ export function buildReport(
   ${warn}
   ${body.join('')}
 </main>
+<div id="toast" role="status" aria-live="polite"></div>
 <script>
   // a tab jumps to its section; a folded section is opened on the way, so the
   // jump never lands on a closed heading. Without script the links still jump.
@@ -206,6 +232,59 @@ export function buildReport(
   }
   window.addEventListener('hashchange', openTarget);
   openTarget();
+
+  // "Applied" / "Not interested": saved to /api/triage with the same key this
+  // page was opened with, then every copy of the job (a pick also sits in a
+  // full list) is hidden at once. Later runs leave it out entirely.
+  (function () {
+    var key = new URLSearchParams(location.search).get('k');
+    var toast = document.getElementById('toast');
+    var timer;
+    function say(text, undoKey) {
+      toast.textContent = text + ' ';
+      if (undoKey) {
+        var u = document.createElement('button');
+        u.type = 'button'; u.className = 'mark'; u.textContent = 'Undo';
+        u.setAttribute('data-status', 'undo'); u.setAttribute('data-undo-key', undoKey);
+        toast.appendChild(u);
+      }
+      toast.className = 'show';
+      clearTimeout(timer);
+      timer = setTimeout(function () { toast.className = ''; }, 6000);
+    }
+    function copies(k) {
+      return Array.prototype.filter.call(document.querySelectorAll('article[data-key]'), function (a) {
+        return a.getAttribute('data-key') === k;
+      });
+    }
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('button[data-status]');
+      if (!b) return;
+      var status = b.getAttribute('data-status');
+      var holder = b.closest('[data-key]');
+      var k = b.getAttribute('data-undo-key') || (holder && holder.getAttribute('data-key'));
+      if (!k) return;
+      if (!key) { say('Marking works on the hosted report, not a local copy.'); return; }
+      b.disabled = true;
+      fetch('/api/triage', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + key, 'content-type': 'text/plain' },
+        body: JSON.stringify({ key: k, status: status })
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (status === 'undo') {
+          copies(k).forEach(function (a) { a.classList.remove('gone'); });
+          if (holder && holder.tagName === 'LI') { holder.classList.add('restored'); b.remove(); }
+          say('Restored.');
+        } else {
+          copies(k).forEach(function (a) { a.classList.add('gone'); });
+          say(status === 'applied' ? 'Marked applied.' : 'Hidden.', k);
+        }
+      }).catch(function (err) {
+        say('Could not save (' + err.message + '). Try again.');
+      }).then(function () { b.disabled = false; });
+    });
+  })();
 </script>
 <footer>
   Sources: RemoteOK, Remotive, Himalayas, We Work Remotely, Jobicy, Working Nomads, Real Work From Anywhere, Hacker News Who is hiring,

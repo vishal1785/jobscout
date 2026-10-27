@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { fetchAll, type Job, type Watch, type SourceHealth } from './sources.ts';
+import { fetchAll, jobKey, type Job, type Watch, type SourceHealth } from './sources.ts';
 import { scoreAll, type Scored } from './score.ts';
 import { buildPack, slug } from './tailor.ts';
 import { resolveDirectLinks, type BoardCache } from './direct.ts';
@@ -22,7 +22,7 @@ import { readCompanies, resolveCompanies } from './companies.ts';
 import { todaysPicks } from './picks.ts';
 import { buildReport } from './report.ts';
 import { buildDigest, notify } from './notify.ts';
-import { inCloud, assertCloudConfig, load, save, KEYS } from './store.ts';
+import { inCloud, assertCloudConfig, load, save, loadMarks, KEYS } from './store.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const p = (...parts: string[]) => join(root, ...parts);
@@ -120,6 +120,14 @@ async function main() {
     else for (const s of scored) s.formQuestions = forms.asked.get(s.id) ?? s.formQuestions;
   }
 
+  // jobs he marked "applied" or "not interested" on the report page stay out of
+  // every list, pack and notification from now on; the report keeps a folded
+  // list of them, each with an undo
+  const marks = await loadMarks(p('data', 'triage.json'));
+  const marked = scored.filter((s) => marks[jobKey(s)]);
+  scored = scored.filter((s) => !marks[jobKey(s)]);
+  log(`Marked by you  : ${marked.length} hidden (${Object.keys(marks).length} marks in all)`);
+
   // prep packs for anything above the threshold. In the cloud there is no
   // drafts/ folder, so each pack is folded into its card in the report instead.
   const packText = new Map<string, string>();
@@ -140,7 +148,7 @@ async function main() {
 
   const reportPath = p('out', 'report.html');
   const stats = { fetched: jobs.length, newCount: newIds.size, packs, health };
-  await save(KEYS.report, reportPath, buildReport(scored, newIds, profile, stats, packText, state.seen, unwatched));
+  await save(KEYS.report, reportPath, buildReport(scored, newIds, profile, stats, packText, state.seen, unwatched, marked.map((j) => ({ job: j, ...marks[jobKey(j)] }))));
 
   // forget ids not seen this run for 60 days, so the state does not only grow
   const cutoff = Date.now() - 60 * 86_400_000;

@@ -355,6 +355,14 @@ export type Watch = { ats: 'ashby' | 'greenhouse' | 'lever' | 'lever-eu' | 'smar
 /** A job that came straight from a company's own board, not an aggregator. */
 export const isBoard = (source: string) => /^(Ashby|Greenhouse|Lever|SmartRecruiters)\//.test(source);
 
+/**
+ * One job however many sites list it: company and title, lowercased. It is
+ * what de-duplication keys on, and what "applied" / "not interested" marks
+ * key on, so a role marked on one site stays hidden when another lists it.
+ */
+export const jobKey = (j: { company: string; title: string }) =>
+  `${j.company}|${j.title}`.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 240);
+
 async function ashby(w: Watch): Promise<Job[]> {
   const data = await getJson(`https://api.ashbyhq.com/posting-api/job-board/${w.token}?includeCompensation=true`);
   return (data.jobs ?? []).map((j: any) => ({
@@ -506,7 +514,7 @@ export async function fetchAll(watchlist: Watch[], log = console.log, health: So
   const rank = (j: Job) => (isBoard(j.source) ? 0 : 1);
   const byKey = new Map<string, Job>();
   for (const j of linked.sort((a, b) => rank(a) - rank(b))) {
-    const key = `${j.company.toLowerCase().trim()}|${j.title.toLowerCase().trim()}`;
+    const key = jobKey(j);
     if (!byKey.has(key)) byKey.set(key, j);
   }
   return [...byKey.values()];

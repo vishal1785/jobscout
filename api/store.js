@@ -66,11 +66,17 @@ export default async function handler(req, res) {
       return json(res, 200, { result: (await r.json()).result });
     }
 
-    let body = '';
+    // bytes first, decoded once: adding each chunk as text splits any
+    // character that straddles two chunks (an accented letter, an en dash),
+    // and a report is ~1 MB of text full of them
+    const chunks = [];
+    let size = 0;
     for await (const chunk of req) {
-      body += chunk;
-      if (body.length > MAX_BYTES) return json(res, 413, { error: 'too large' });
+      size += chunk.length;
+      if (size > MAX_BYTES) return json(res, 413, { error: 'too large' });
+      chunks.push(Buffer.from(chunk));
     }
+    const body = Buffer.concat(chunks).toString('utf8');
     const r = await fetch(`${KV_URL}/set/${encodeURIComponent(key)}`, {
       method: 'POST',
       headers: { authorization: `Bearer ${KV_TOKEN}`, 'content-type': 'text/plain' },

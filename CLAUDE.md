@@ -45,6 +45,7 @@ work runs on Actions rather than in a Vercel function.
 | `src/notify.ts` | ntfy only. Digest sanitiser `safeField` - see Security |
 | `src/store.ts` | Local mode: files in data/, out/. Cloud mode (`CI` set): `/api/store` with `Authorization: Bearer PUBLISH_KEY`. `assertCloudConfig` fails fast naming a missing secret |
 | `api/report.js`, `api/store.js`, `api/kick.js` | The Vercel functions (plain JS, ESM) |
+| `api/triage.js` | "Applied" / "Not interested" marks from the report page's buttons: POST with REPORT_KEY sets or undoes one mark (HSET/HDEL on the `jobscout:triage` hash, atomic per tap); GET with PUBLISH_KEY returns them all. Keyed by `jobKey` (company\|title, lowercased) so a role marked on one site stays hidden when another lists it. The run (`loadMarks` in store.ts) drops marked jobs from picks, lists, packs and the digest; the report lists them in a folded "Applied & hidden" section with Undo. Locally marks come from `data/triage.json` |
 | `profile.json` | All tuning: titles, skill weights, gaps, eligibility phrases, projects, thresholds. The owner edits this |
 | `companies.json` | The owner's list of companies to watch (public; the owner chose that). On 2026-10-27 it gained 108 boards from the Work Wanderers "221 fully-remote companies" PDF (the owner chose public despite its no-redistribution notice): each careers page was scanned for its ATS link, else the name probed, and name-probed boards were checked for identity - "Remote" (General Assembly), "Crisp" (a Dutch grocer) and "Ghost" (AI hardware) were wrong and dropped; "Plane" is plane.so. ~92 had no readable board and 8 use Workable/Breezy, which jobscout cannot read yet. Name only -> board looked up each run; `board: "ats:token"` pins it; `careers` -> "Check by hand" in the report. Replaced watchlist.json. Discovered boards still live in Redis (`jobscout:watchlist`) |
 | `src/companies.ts` | Resolves companies.json to boards. `node src/companies.ts` prints each entry's board, job count and two sample titles, to catch a slug that belongs to another company ("wise" on Greenhouse is not Wise) |
@@ -52,7 +53,8 @@ work runs on Actions rather than in a Vercel function.
 | `test/fake-vercel.mjs` | Local stand-in for Vercel + Upstash; see Testing |
 
 Store keys: `jobscout:state` (seen ids), `jobscout:report`, `jobscout:watchlist`,
-`jobscout:board-cache`. `/api/store` only accepts keys matching `^jobscout:[a-z-]{1,40}$`.
+`jobscout:board-cache`, and the `jobscout:triage` hash (written only by api/triage.js; it is a
+hash, so /api/store's GET cannot read it). `/api/store` only accepts keys matching `^jobscout:[a-z-]{1,40}$`.
 
 ## Secrets (names only - never commit values)
 
@@ -62,7 +64,10 @@ Store keys: `jobscout:state` (seen ids), `jobscout:report`, `jobscout:watchlist`
 - GitHub Actions secrets: `JOBSCOUT_SITE`, `PUBLISH_KEY` (same value as Vercel), `NTFY_TOPIC`,
   `JOBSCOUT_REPORT_URL`
 - Two keys on purpose: REPORT_KEY travels in notification URLs and browser history; whoever can
-  read the report must not be able to overwrite it.
+  read the report must not be able to overwrite it. Since 2026-10-27 REPORT_KEY can write one
+  thing, the triage marks (the page's buttons need it, and anything the page can do its URL
+  holder can do). It still cannot touch the report or any other key; the worst a leaked link
+  does is hide jobs, which Undo in the report brings back.
 
 ## Privacy rules (the repo is public)
 
